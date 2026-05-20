@@ -1,0 +1,88 @@
+{
+  "pipeline": [
+    {
+      "agent": "ReconAndEvidenceCollector",
+      "persona": "Forensic analyst and evidence synthesizer",
+      "role": "Reconstruct repository behavior, capture all evidence of implementation, design, and usage patterns. Document current repo state as-is without interpretation.",
+      "inputs": [
+        "Original source code (if available)",
+        "Git history, commits, and comments",
+        "Test results and runtime traces",
+        "Documentation and README files"
+      ],
+      "outputs": [
+        "evidence_catalog.json — A comprehensive catalog of all observed behaviors, patterns, and constraints",
+        "test_vectors/ — Reference test inputs and expected outputs",
+        "public_spec_fragments.json — Extracted domain-level contracts and API signatures"
+      ],
+      "stop_rules": [
+        "Stop when all code paths have been traced and documented",
+        "Stop when evidence is sufficient to hand off to BehaviorModeler without guessing",
+        "Stop if more than one interpretation of ambiguous behavior exists; flag as decision point"
+      ],
+      "drift_detection": "If new code or tests appear that contradict documented behavior, raise a conflict flag immediately",
+      "handoff_artifact": "evidence_catalog.json and public_spec_fragments.json must be semantically complete enough for BehaviorModeler to design a clean-room reimplementation",
+      "human_checkpoint": "Review evidence_catalog.json to ensure all quirks and rough edges are captured, not smoothed away",
+      "risk_control": "Overspecifying is safer than underspecifying. Err on the side of documenting actual observed behavior even if messy"
+    },
+    {
+      "agent": "BehaviorModeler",
+      "persona": "API contract designer and behavior specifier",
+      "role": "Read evidence from ReconAndEvidenceCollector and design a clean-room specification that defines the repo's behavior at the contract level, independent of implementation.",
+      "inputs": [
+        "evidence_catalog.json",
+        "test_vectors/",
+        "public_spec_fragments.json"
+      ],
+      "outputs": [
+        "spec.json — A formal behavioral specification covering all public contracts, endpoints, and data flows",
+        "interop_tests/ — Test suite that validates any implementation against the spec"
+      ],
+      "stop_rules": [
+        "Stop when spec.json fully describes all endpoints, data types, and workflows",
+        "Stop when interop_tests/ exercises every documented code path",
+        "Stop if spec conflicts with evidence; escalate to human"
+      ],
+      "drift_detection": "Check if spec covers all evidence; if evidence reveals undocumented behavior, amend spec or mark as implementation detail",
+      "handoff_artifact": "spec.json must be language/framework-agnostic and testable by interop_tests/",
+      "human_checkpoint": "Review spec.json to ensure it captures current behavior faithfully without prescribing reimplementation",
+      "risk_control": "Spec should be descriptive (what the repo does) not prescriptive (how to build it differently)"
+    },
+    {
+      "agent": "ReimplementationAndTestHarness",
+      "persona": "Clean-room engineer and verification lead",
+      "role": "Use spec.json and interop_tests/ to build a clean-room reimplementation from scratch, without referring to original source code. Validate implementation against spec.",
+      "inputs": [
+        "spec.json",
+        "interop_tests/",
+        "evidence_catalog.json (reference only, do not copy code)"
+      ],
+      "outputs": [
+        "implementation/ — Clean-room reimplemented source code",
+        "ci/ — CI/CD pipeline that runs interop_tests/ and other validations",
+        "interop_report.html — Report on whether implementation passes interop_tests/ and matches spec"
+      ],
+      "stop_rules": [
+        "Stop when implementation passes all interop_tests/",
+        "Stop when implementation behavior is semantically equivalent to original (within spec tolerance)",
+        "Stop if any gap between spec and implementation is found; escalate"
+      ],
+      "drift_detection": "Run interop_tests/ after any implementation change; if a test fails, the implementation has drifted from spec",
+      "handoff_artifact": "interop_report.html must show 100% pass rate on interop_tests/ or flag gaps clearly",
+      "human_checkpoint": "Review interop_report.html before accepting implementation. If pass rate is not 100%, request ReimplementationAndTestHarness to fix gaps",
+      "risk_control": "Err on the side of stricter tests. If interop_tests/ are lenient, reimplementation could hide behavior divergence"
+    }
+  ],
+  "artifact_inventory": {
+    "evidence_catalog.json": "Comprehensive evidence of current repo behavior and patterns",
+    "test_vectors/": "Canonical test inputs and expected outputs for all major code paths",
+    "public_spec_fragments.json": "Extracted API contracts and data models from original code",
+    "spec.json": "Formal behavioral specification, language-agnostic",
+    "interop_tests/": "Test suite that validates any implementation against spec",
+    "implementation/": "Clean-room reimplementation source code",
+    "ci/": "CI/CD configurations and automation",
+    "interop_report.html": "Pass/fail report for implementation validation"
+  },
+  "handoff_sequence": "ReconAndEvidenceCollector -> BehaviorModeler -> ReimplementationAndTestHarness",
+  "decision_points": []
+}

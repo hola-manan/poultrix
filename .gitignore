@@ -1,0 +1,74 @@
+# ── Python build / cache ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Virtual environments (every flavour found in this project) ─────────────
+venv/
+env/
+ENV/
+.venv/
+.venv*/
+.miniforge3/
+.conda-gdal/
+.py312embed/
+.conda/
+.mamba/
+
+# ── Standalone installers / bootstrap files at the project root ────────────
+Miniforge3-*.exe
+python-*-embed-*.zip
+get-pip.py
+tmp_*/
+
+# ── Testing ─────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── IDE / editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Runtime artifacts (the `data/` exclusion covers most rasters/JSON/CSV) ─
+data/
+*.log
+*.err.log
+
+# ── Environment / secrets ──────────────────────────────────────────────────
+.env
+.env.local
+*.env
+
+# ── Local databases ─────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Docker ──────────────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Third-party branded reference (do not redistribute) ────────────────────
+farmonaut_technologies_private_limited_jeevnaireport.pdf
+
+# ── Claude Code session metadata ────────────────────────────────────────────
+.claude/

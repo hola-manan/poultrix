@@ -1,0 +1,15 @@
+# One-time setup (recommended — makes the `jeevn` package always importable):
+#     pip install -e .
+# After that, the PYTHONPATH lines below are not needed.
+
+# Terminal 1 - API Server
+cd c:\Users\manan\OneDrive2\Desktop\ashi
+.\.venv\Scripts\activate
+$env:PYTHONPATH = "$(Get-Location)\src"
+uvicorn jeevn.api.app:app --reload --port 8000
+
+# Terminal 2 - Streamlit UI
+cd c:\Users\manan\OneDrive2\Desktop\ashi
+.\.venv\Scripts\activate
+$env:PYTHONPATH = "$(Get-Location)\src"
+streamlit run src\jeevn\ui\app.py

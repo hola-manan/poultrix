@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+streamlit
+pytest
+numpy
+sentinelsat
+prometheus-client
+mlflow
+python-dotenv
+requests
+
+folium
+streamlit-folium
+reportlab
+matplotlib
+Pillow

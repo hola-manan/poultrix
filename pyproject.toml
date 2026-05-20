@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jeevn"
+version = "0.1.0"
+description = "Jeevn MVP - agricultural remote-sensing platform"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "streamlit",
+    "numpy",
+    "sentinelsat",
+    "prometheus-client",
+    "mlflow",
+    "python-dotenv",
+    "requests",
+    "folium",
+    "streamlit-folium",
+    "reportlab",
+    "matplotlib",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["jeevn*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
