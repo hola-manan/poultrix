@@ -41,13 +41,7 @@ todo-tracking an agent uses.
 
 *(prioritised — top item is the next one to pick up)*
 
-### 3. Fix the 3 pre-existing failing tests
-- **Status:** pending
-- **Why:** `test_yield_proxy`, `test_weeds_guidance`, `test_nutrient_stress_score`
-  have been failing since before the restructure (test-vs-impl signature
-  drift, not real bugs).
-- **Acceptance:** All 39 tests pass under `pytest tests/`.
-- **Files:** see `docs/known_issues.md` for the exact mismatches.
+(none — backlog items below; promote one here when prioritised)
 
 ---
 
@@ -121,6 +115,17 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 3. Fix the 3 pre-existing failing tests
+- **Resolved:** 2026-05-21
+- One-liner: Updated `test_yield_proxy`, `test_weeds_guidance`,
+  `test_nutrient_stress_score` to match each function's current
+  contract. Suite is now fully green (82 passing, 0 failing) — first
+  time since the restructure. Functions left untouched since the rest
+  of the codebase already relies on their current return shapes; only
+  the stale test expectations needed correcting.
+  `docs/known_issues.md` rewritten to a generic skeleton with these
+  three moved to a Resolved section.
 
 ### 2. Add Open-Meteo soil moisture to weather fetch
 - **Resolved:** 2026-05-21

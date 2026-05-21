@@ -32,22 +32,51 @@ def test_fertilizer_issue_detection():
     assert result["fertilizer_issue"] is False
 
 def test_yield_proxy():
-    """Test yield proxy estimation"""
-    
+    """Test yield proxy estimation.
+
+    `yield_proxy()` returns a dict with the keys `estimated_yield_t_ha`
+    (units-explicit), `confidence`, and `peak_ndvi`. The output is the
+    estimated yield in *tonnes per hectare*, clipped to a realistic
+    0.5–12.0 range.
+    """
     result = detections.yield_proxy(cumulative_ndvi=3.0)
-    
-    assert "estimated_yield" in result
+
+    # Contract: dict with these three keys
+    assert "estimated_yield_t_ha" in result
     assert "confidence" in result
-    assert 0 <= result["confidence"] <= 1
-    assert result["estimated_yield"] > 0
+    assert "peak_ndvi" in result
+
+    # Yield is positive and within the function's clipped range
+    assert 0.5 <= result["estimated_yield_t_ha"] <= 12.0
+    # Confidence is also clipped to [0.15, 0.95]
+    assert 0.15 <= result["confidence"] <= 0.95
+
 
 def test_weeds_guidance():
-    """Test weeds guidance placeholder"""
-    
-    # Low NDVI guidance
-    msg = detections.weeds_guidance(ndvi=0.25)
-    assert "Low NDVI" in msg
-    
-    # No obvious indicators
-    msg = detections.weeds_guidance(ndvi=0.7)
-    assert "No obvious" in msg
+    """Test weeds-guidance dict + branching narrative.
+
+    `weeds_guidance()` returns a dict with `weed_pressure_score`,
+    `entropy_value`, and `guidance` (a human-readable sentence). The
+    branch the sentence falls into is driven by `texture_entropy`:
+      - low entropy  → "Uniform canopy structure"
+      - mid entropy  → "Moderate variance"
+      - high entropy → "Significant structural variance"
+    NDVI only dampens borderline-low pressure when ndvi > 0.75.
+    """
+    # Low entropy (canopy is uniform) → low-pressure branch
+    low = detections.weeds_guidance(ndvi=0.5, texture_entropy=0.5)
+    assert "Uniform canopy structure" in low["guidance"]
+    assert low["weed_pressure_score"] < 0.3
+
+    # Mid entropy → moderate branch
+    mid = detections.weeds_guidance(ndvi=0.5, texture_entropy=2.0)
+    assert "Moderate variance" in mid["guidance"]
+    assert 0.3 < mid["weed_pressure_score"] < 0.6
+
+    # High entropy → significant-pressure branch
+    high = detections.weeds_guidance(ndvi=0.5, texture_entropy=3.0)
+    assert "Significant structural variance" in high["guidance"]
+    assert high["weed_pressure_score"] > 0.6
+
+    # Ordering: more entropy → more weed pressure
+    assert low["weed_pressure_score"] < mid["weed_pressure_score"] < high["weed_pressure_score"]

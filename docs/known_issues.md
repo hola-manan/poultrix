@@ -1,31 +1,37 @@
 # Known Issues
 
-## Failing tests (pre-existing, inherited from `preproc/` → `remote_sensing/` move)
+*Drop entries here as they're discovered. Move resolved ones to the
+`## Resolved` section with the resolution date and a short note. The
+intent of this file is to be the single place a contributor (human or
+AI agent) checks for "is this a known bug or did I just break something?"*
 
-These three tests fail because their assertions don't match the function
-signatures of the code they exercise. The function implementations were
-moved verbatim from `preproc/` during the 2026-05-13 restructure; the tests
-were broken before that move, not caused by it.
+---
 
-### 1. `tests/remote_sensing/analysis/test_detections.py::test_yield_proxy`
+## Open
 
-- **File:** [tests/remote_sensing/analysis/test_detections.py:39](../tests/remote_sensing/analysis/test_detections.py#L39)
-- **Failure:** `assert "estimated_yield" in result` — but `yield_proxy()` returns key `"estimated_yield_t_ha"`.
-- **Fix options:**
-  - Update the test to assert `"estimated_yield_t_ha"`, OR
-  - Add an `"estimated_yield"` alias in [src/jeevn/remote_sensing/analysis/detections.py](../src/jeevn/remote_sensing/analysis/detections.py) `yield_proxy()`.
+(none — the suite is green as of 2026-05-21)
 
-### 2. `tests/remote_sensing/analysis/test_detections.py::test_weeds_guidance`
+---
 
-- **File:** [tests/remote_sensing/analysis/test_detections.py:49](../tests/remote_sensing/analysis/test_detections.py#L49)
-- **Failure:** Test expects `"Low NDVI"` substring in a plain-string return; `weeds_guidance()` now returns a dict `{"weed_pressure_score": ..., "guidance": "..."}`.
-- **Fix:** Update the test to read `result["guidance"]` and adjust the substring expectations to match the new sentences (`"Uniform canopy structure"` / `"Moderate variance"` / `"Significant structural variance"`).
+## Resolved
 
-### 3. `tests/remote_sensing/analysis/test_indices.py::test_nutrient_stress_score`
-
-- **File:** [tests/remote_sensing/analysis/test_indices.py:78](../tests/remote_sensing/analysis/test_indices.py#L78)
-- **Failure:** `assert score_good < score_moderate` but both clamp to `0.05` (the function's lower clip floor in [src/jeevn/remote_sensing/analysis/signals.py](../src/jeevn/remote_sensing/analysis/signals.py) `nutrient_stress_score`).
-- **Root cause:** With `red_edge_ndvi/ndvi` ratios of ~0.86 (0.6/0.7) and ~0.80 (0.4/0.5), the formula `1.0 - ((ratio - 0.2) / 0.6)` produces negative values which both clip to `0.05`.
-- **Fix options:**
-  - Pick test inputs that exercise the unclamped range (e.g. `red_edge_ndvi=0.3` vs `0.5`), OR
-  - Revisit the formula — the current clipping behaviour likely doesn't match real-world expectations.
+### 3 pre-existing test failures inherited from `preproc/` → `remote_sensing/`
+- **Resolved:** 2026-05-21 (task #3 in TASKS.md)
+- **Tests:** `test_yield_proxy`, `test_weeds_guidance`, `test_nutrient_stress_score`
+- **Root cause:** Each test had drifted out of sync with its function's
+  contract. The function implementations were moved verbatim from
+  `preproc/` during the 2026-05-13 restructure; the tests had been broken
+  before the move and were carried over as-is, then logged here so a
+  later commit could address them deliberately.
+- **Fix shape:** Updated each test to match the current function contract
+  (functions were left alone since their contracts are the ones the rest
+  of the codebase relies on).
+  - `test_yield_proxy` → asserts on `estimated_yield_t_ha` and `peak_ndvi`
+    (the units-explicit keys the function actually returns).
+  - `test_weeds_guidance` → reads `result["guidance"]` (function returns
+    a dict, not a string) and passes `texture_entropy` to exercise the
+    low / moderate / high branches of the narrative.
+  - `test_nutrient_stress_score` → uses ratio inputs in the function's
+    unclamped band (0.2–0.8) so the relative ordering is meaningful;
+    previous inputs both clamped to 0.05 making the `<` assertion
+    impossible to satisfy.

@@ -67,12 +67,25 @@ def test_msi_computation():
     assert msi[0] < msi[1]  # Second value has higher stress
 
 def test_nutrient_stress_score():
-    """Test nutrient stress detection"""
-    
-    # Good vegetation = low nutrient stress
-    score_good = signals.nutrient_stress_score(ndvi=0.7, red_edge_ndvi=0.6)
-    
-    # Moderate vegetation = moderate stress
-    score_moderate = signals.nutrient_stress_score(ndvi=0.5, red_edge_ndvi=0.4)
-    
-    assert score_good < score_moderate
+    """Test nutrient stress detection.
+
+    `nutrient_stress_score()` returns `1 - (ratio - 0.2) / 0.6`, clipped
+    to [0.05, 0.95], where `ratio = red_edge_ndvi / ndvi`. A healthy plant
+    has ratio close to 0.8 (re tracks ndvi → low stress, score ≈ 0.05).
+    A stressed plant has a much smaller ratio (re lags far behind ndvi →
+    high stress, score approaches 0.95).
+
+    The previous version of this test used inputs whose ratios both
+    landed at/above 0.8, so both scores clamped to 0.05 and the
+    `<` assertion failed. Inputs below pick ratios deep in the
+    unclamped range so the relative ordering is meaningful.
+    """
+    # Healthy: red-edge tracks NDVI closely (ratio ≈ 0.64) → low stress
+    score_healthy = signals.nutrient_stress_score(ndvi=0.7, red_edge_ndvi=0.45)
+
+    # Stressed: red-edge lags far behind NDVI (ratio ≈ 0.36) → high stress
+    score_stressed = signals.nutrient_stress_score(ndvi=0.7, red_edge_ndvi=0.25)
+
+    assert score_healthy < score_stressed
+    # Both inside the unclamped band [0.05, 0.95]
+    assert 0.05 < score_healthy < score_stressed < 0.95
