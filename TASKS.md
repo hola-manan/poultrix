@@ -18,8 +18,10 @@ todo-tracking an agent uses.
 - The agent or human picking up a task sets `Status: in-progress`, adds an
   `Owner:` line (`<agent-or-human>-<YYYY-MM-DD>`), and moves the block to
   `## In Progress`.
-- When marking done: add `Resolved: <short-sha> — <YYYY-MM-DD>`, move the
-  block under `## Done`, and trim `## Done` to the most recent ~10 items.
+- When marking done: add `Resolved: <YYYY-MM-DD>` and move the block under
+  `## Done`. The commit message should contain `Resolves task #N` so the
+  resolving commit is findable via `git log --grep "Resolves task #N"`.
+  Trim `## Done` to the most recent ~10 items.
 - **Update this file in the same commit as the code change** so the task
   state and the code state move together.
 - Don't pick a task whose `Status: in-progress` is held by someone else
@@ -38,34 +40,6 @@ todo-tracking an agent uses.
 ## Up Next
 
 *(prioritised — top item is the next one to pick up)*
-
-### 1. Replace hardcoded soil properties with ISRIC SoilGrids
-- **Status:** pending
-- **Why:** All 8 soil values (pH, OC, texture, bulk density, WHC, infiltration,
-  EC, soil_moisture) are currently hardcoded regional-template values in
-  `src/jeevn/infrastructure/pseudo_satellite.py`. SoilGrids gives global
-  250 m real data via a free anonymous REST API at
-  `rest.isric.org/soilgrids/v2.0/properties/query`. Replaces ~5 of the 8.
-- **Acceptance:**
-  - [ ] New `SoilGridsClient` class (or equivalent) in
-        `src/jeevn/infrastructure/data_sources/soil.py`, replacing the
-        current stub that always returns `make_default_soil`.
-  - [ ] Returns pH, SOC, sand/silt/clay (and a derived USDA texture class),
-        bulk density, CEC at 0–30 cm depth.
-  - [ ] Falls back to `pseudo_satellite.make_default_soil` with
-        `_fabricated=True` on network failure.
-  - [ ] WHC + infiltration are derived from texture class via a lookup
-        table — not hardcoded numbers.
-  - [ ] Per-property fabricated tracking: replace whole-or-nothing
-        `_fabricated: True` with `_fabricated_fields: {ph: false, ec: true,
-        ...}` so the data-quality banner can be granular.
-  - [ ] Unit-conversion tests: `phh2o` (×10) → pH, `soc` (dg/kg) → %,
-        `bdod` (cg/cm³) → g/cm³.
-- **Files:**
-  - `src/jeevn/infrastructure/data_sources/soil.py`
-  - `src/jeevn/domain/soil/management.py` (read per-property flags)
-  - `src/jeevn/infrastructure/pseudo_satellite.py` (`FABRICATED_FIELD_DESCRIPTIONS`)
-  - `src/jeevn/application/advisory_service.py` (propagate granular flags)
 
 ### 2. Add Open-Meteo soil moisture to weather fetch
 - **Status:** pending
@@ -161,6 +135,30 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 1. Replace hardcoded soil properties with ISRIC SoilGrids
+- **Resolved:** 2026-05-14
+- One-liner: SoilGrids v2.0 REST adapter in `data_sources/soil.py` now
+  fetches real pH, SOC, sand/silt/clay, bulk density, CEC at 0–30 cm
+  (depth-weighted) for the AOI centroid. Texture classified from real
+  sand/silt/clay via USDA triangle; WHC + infiltration looked up from
+  texture. Per-property `_fabricated_fields` tracking replaces the old
+  whole-dict `_fabricated` flag — `data_quality.fabricated_fields` now
+  shows e.g. `soil.ec`, `soil.soil_moisture_current` only for the
+  properties that are still synthetic. Falls back to the regional
+  template (everything fabricated) on network failure. 28 new tests pass.
+  Live-verified against Ganganagar farmland: hardcoded OC was 0.14 %;
+  SoilGrids returns ~0.56 % depth-weighted (4× correction). Also bundled:
+  - Built-up-land detection: when SoilGrids returns HTTP 200 with all-null
+    means (AOI centroid is in their urban land mask), the report now
+    surfaces a top-level red alert via `data_quality.alerts` instead of
+    silently falling back. The alert tells the user the polygon needs to
+    be redrawn over actual cropland (per the no-spiral-substitution rule).
+  - Weather fix: Open-Meteo archive-api end_date/start_date now clamped
+    to today before the request, removing the 400 Bad Request that fired
+    when the user's crop dates extended into the future.
+  - Dev utility: `scripts/dev_smoke/find_farmland.py` for probing
+    SoilGrids coverage around a region.
 
 ### Move dev-smoke scripts out of project root
 - **Resolved:** 441578e — 2026-05-14

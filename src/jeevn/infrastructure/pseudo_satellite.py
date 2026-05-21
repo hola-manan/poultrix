@@ -27,7 +27,11 @@ DEFAULT_SOIL_PROPERTIES: Dict[str, Any] = {
     "ph": 7.0,
     "ec": 0.4,                          # Electrical conductivity (dS/m)
     "organic_carbon_percent": 0.15,
+    "sand_percent": 40.0,
+    "silt_percent": 40.0,
+    "clay_percent": 20.0,
     "texture": "loam",
+    "cec": 12.0,                        # cation exchange capacity (cmol(+)/kg)
     "water_holding_capacity": 18,        # mm per 30 cm depth
     "infiltration_rate": 12,             # mm / hour
     "bulk_density": 1.5,                 # g / cm³
@@ -38,7 +42,11 @@ GANGANAGAR_SOIL_PROPERTIES: Dict[str, Any] = {
     "ph": 7.2,
     "ec": 0.5,
     "organic_carbon_percent": 0.14,
+    "sand_percent": 60.0,
+    "silt_percent": 25.0,
+    "clay_percent": 15.0,
     "texture": "sandy loam",
+    "cec": 10.0,
     "water_holding_capacity": 18,
     "infiltration_rate": 15,
     "bulk_density": 1.5,
@@ -72,8 +80,8 @@ DEFAULT_LOCATION: Dict[str, Any] = {
 DEFAULT_DAYS_SINCE_SOWING = 60
 DEFAULT_AREA_ACRES = 0.421
 DEFAULT_CROP_NAME = "apple"
-DEFAULT_LATITUDE = 29.9        # Ganganagar, Rajasthan
-DEFAULT_LONGITUDE = 73.9
+DEFAULT_LATITUDE = 29.92        # ~10 km east of Sri Ganganagar town —
+DEFAULT_LONGITUDE = 73.97       #   real cropland with full SoilGrids coverage
 
 
 # ── Builders ─────────────────────────────────────────────────────────────────
@@ -99,8 +107,16 @@ def make_default_weather(lat: float, lon: float) -> Dict[str, Any]:
 
 def make_default_soil(lat: float, lon: float,
                       location_name: str = "") -> Dict[str, Any]:
-    """Build a `{location, properties, _fabricated: True}` soil dict, choosing
-    region-specific properties when the location name matches a known region.
+    """Build a fully-fabricated soil dict (regional template) used as the
+    fallback when no real soil data is available.
+
+    Returned shape matches the SoilGrids-backed adapter:
+        {location, properties, _fabricated_fields}
+    where `_fabricated_fields` flags every property `True` since this entire
+    record is the template, not a measurement.
+
+    A caller that obtains real values overlays them onto `properties` and
+    flips the corresponding `_fabricated_fields` entries to `False`.
     """
     if location_name.lower() in ("ganganagar", "rajasthan"):
         props = GANGANAGAR_SOIL_PROPERTIES.copy()
@@ -114,7 +130,7 @@ def make_default_soil(lat: float, lon: float,
             "name": location_name,
         },
         "properties": props,
-        "_fabricated": True,
+        "_fabricated_fields": {k: True for k in props.keys()},
     }
 
 
@@ -134,9 +150,26 @@ FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "rvi": "Radar Vegetation Index (derived from a fabricated NDVI)",
     "rsm": "Radar Soil Moisture (no satellite reading available)",
     "weather": "Weather data (Open-Meteo unreachable; using semi-arid May defaults)",
-    "soil": "Soil properties (no soil database available; using region template)",
+    "soil": "Soil properties (SoilGrids unreachable; using region template)",
     "location": "Reverse-geocoded location (Nominatim unreachable)",
     "days_since_sowing": "Crop age (no sowing date provided; assumed 60 days)",
+
+    # Per-property soil fabrications surfaced once we switched to granular
+    # tracking. The granular keys are emitted by the soil adapter when only
+    # *some* properties are fabricated (e.g. SoilGrids returned real pH but
+    # we still have no real EC source).
+    "soil.ph":                       "Soil pH (SoilGrids did not return a value at this location)",
+    "soil.ec":                       "Soil EC / salinity (no free global source — using regional template)",
+    "soil.organic_carbon_percent":   "Soil organic carbon (SoilGrids did not return a value at this location)",
+    "soil.sand_percent":             "Soil sand % (SoilGrids unreachable)",
+    "soil.silt_percent":             "Soil silt % (SoilGrids unreachable)",
+    "soil.clay_percent":             "Soil clay % (SoilGrids unreachable)",
+    "soil.texture":                  "Soil texture class (could not derive from sand/silt/clay)",
+    "soil.cec":                      "Soil cation exchange capacity (SoilGrids did not return a value)",
+    "soil.water_holding_capacity":   "Water-holding capacity (no real texture to derive from)",
+    "soil.infiltration_rate":        "Infiltration rate (no real texture to derive from)",
+    "soil.bulk_density":             "Bulk density (SoilGrids did not return a value)",
+    "soil.soil_moisture_current":    "Soil moisture (Open-Meteo soil moisture not yet integrated — task #2)",
 }
 
 

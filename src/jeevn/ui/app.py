@@ -95,11 +95,22 @@ with tab_submit:
                 }
                 st.success("✅ AOI drawn successfully!")
 
+        # Default AOI: 200 m x 200 m parcel (~10 acres / 4 ha) centred at
+        # (29.92, 73.97), about 10 km east of Sri Ganganagar town. Verified
+        # to be on real cropland (the Indira Gandhi Canal command area)
+        # and to have full SoilGrids coverage — typical Indo-Gangetic
+        # alluvium: pH ~7.9, OC ~0.56%, sandy clay loam.
         default_val = json.dumps(drawn_geojson, indent=2) if drawn_geojson else json.dumps({
             "type": "FeatureCollection",
             "features": [{"type": "Feature", "geometry": {
                 "type": "Polygon",
-                "coordinates": [[[73.865536, 29.925147], [73.865268, 29.924394], [73.865976, 29.924449], [73.865536, 29.925147]]]
+                "coordinates": [[
+                    [73.96895, 29.9191],
+                    [73.97105, 29.9191],
+                    [73.97105, 29.9209],
+                    [73.96895, 29.9209],
+                    [73.96895, 29.9191]
+                ]]
             }}]
         }, indent=2)
         geojson_text = st.text_area("GeoJSON Code", height=100, value=default_val)
@@ -191,8 +202,21 @@ with tab_report:
             f"**Satellite Visit:** {sat_visit}   |   **Crop:** {crop_name}"
         )
 
-        # Data-quality banner: warn if any input was fabricated.
+        # Data-quality block: alerts (red, top-level — eg "AOI in city")
+        # followed by the fabricated-fields list (yellow, lower-priority).
         dq = advisory.get("data_quality") or {}
+
+        # Prominent alerts go first so they aren't lost in the long
+        # fabricated-fields bullet list.
+        for alert in dq.get("alerts") or []:
+            title = alert.get("title", "Alert")
+            message = alert.get("message", "")
+            action = alert.get("action", "")
+            st.error(
+                f"**{title}**\n\n{message}"
+                + (f"\n\n_What to do:_ {action}" if action else "")
+            )
+
         fabricated = dq.get("fabricated_fields") or []
         if fabricated:
             details = dq.get("details") or {}

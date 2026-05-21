@@ -23,6 +23,12 @@ def render(soil: dict, growth: dict, *, crop_name: str, location: str,
     salinity = (soil.get('salinity') or 'low').title()
     soc = soil.get('organic_carbon_percent', 0.15)
     soc_status = (soil.get('organic_carbon_status') or 'low').lower()
+    texture = (soil.get('texture') or '—').title()
+    cec = soil.get('cec')
+    cec_status = soil.get('cec_status')
+    sand_pct = soil.get('sand_percent')
+    silt_pct = soil.get('silt_percent')
+    clay_pct = soil.get('clay_percent')
 
     yld_acre = int(growth.get('yield_per_acre_kg', 0))
     total_yld = growth.get('total_yield_kg', 0)
@@ -45,8 +51,23 @@ def render(soil: dict, growth: dict, *, crop_name: str, location: str,
         m1, m2 = st.columns(2)
         m1.metric("pH", ph)
         m2.metric("Salinity", salinity)
-        st.metric("Organic Carbon", f"{soc:.2f}%", delta=soc_status.title(),
-                  delta_color="off")
+        m3, m4 = st.columns(2)
+        m3.metric("Organic Carbon", f"{soc:.2f}%",
+                  delta=soc_status.title(), delta_color="off")
+        m4.metric("Texture", texture)
+        # Texture composition + CEC are surfaced only when SoilGrids
+        # returned real values (otherwise the keys are missing).
+        if cec is not None:
+            st.metric(
+                "CEC", f"{cec:.1f} cmol(+)/kg",
+                delta=cec_status if cec_status else None,
+                delta_color="off",
+            )
+        if sand_pct is not None and silt_pct is not None and clay_pct is not None:
+            st.caption(
+                f"Sand {sand_pct:.0f}% · Silt {silt_pct:.0f}% · Clay {clay_pct:.0f}% "
+                "(ISRIC SoilGrids, 0–30 cm)"
+            )
 
     with c2:
         st.markdown("##### Growth & Yield")

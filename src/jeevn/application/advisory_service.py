@@ -38,6 +38,7 @@ class AgriculturalReportGenerator:
             crop_name=crop_name, sowing_date=sowing_date,
         )
         aoi_fabricated = aoi_data.pop("_fabricated_sources", [])
+        aoi_alerts = aoi_data.pop("_alerts", [])
 
         ndvi_data, ndvi_fabricated = AgriculturalReportGenerator._process_ndvi_data(
             ndvi_timeseries, ndvi_raster_data,
@@ -101,11 +102,14 @@ class AgriculturalReportGenerator:
 
         report["summary"] = AgriculturalReportGenerator._generate_summary(report)
 
-        # Data-quality block: which inputs were fabricated this run.
+        # Data-quality block: which inputs were fabricated, plus higher-level
+        # alerts that the UI should surface prominently (e.g. "AOI is in a
+        # city — your polygon needs to be redrawn").
         fabricated = sorted(set(aoi_fabricated + ndvi_fabricated))
         report["data_quality"] = {
             "fabricated_fields": fabricated,
             "details": {f: pseudo_satellite.describe(f) for f in fabricated},
+            "alerts": aoi_alerts,
             "warning": (
                 "Some inputs to this report are fabricated defaults — see "
                 "`fabricated_fields`. Treat the affected outputs as illustrative."

@@ -31,6 +31,11 @@ class SoilManagementCalculator:
                 aoi_data.get("crop_name", "apple")
             ),
             "texture": soil_props.get("texture", "loam"),
+            "sand_percent": soil_props.get("sand_percent"),
+            "silt_percent": soil_props.get("silt_percent"),
+            "clay_percent": soil_props.get("clay_percent"),
+            "cec": soil_props.get("cec"),
+            "cec_status": SoilManagementCalculator._classify_cec(soil_props.get("cec")),
             "water_holding_capacity_mm": soil_props.get("water_holding_capacity", 18),
             "infiltration_rate_mm_h": soil_props.get("infiltration_rate", 12),
             "soil_moisture_current": round(soil_props["soil_moisture_current"], 2),
@@ -54,6 +59,20 @@ class SoilManagementCalculator:
             return "moderate"
         else:
             return "high"
+
+    @staticmethod
+    def _classify_cec(cec):
+        """USDA-style CEC classification in cmol(+)/kg.
+        <10 = low (sandy), 10-25 = moderate, >25 = high (clay/organic).
+        Returns None when CEC is unknown so the UI can hide the row.
+        """
+        if cec is None:
+            return None
+        if cec < 10:
+            return "low (sandy / low organic matter)"
+        if cec < 25:
+            return "moderate"
+        return "high (clay-rich or high organic matter)"
 
     @staticmethod
     def _classify_organic_carbon(soc_percent: float, crop: str = "apple") -> str:
@@ -90,6 +109,21 @@ class SoilManagementCalculator:
             findings.append(f"Soil salinity is {analysis['salinity']}. Monitor for salt stress and consider leaching fraction.")
 
         findings.append(f"Soil organic carbon is {analysis['organic_carbon_status']}.")
+
+        # Texture composition — emitted only when real sand/silt/clay are
+        # available (SoilGrids fetch succeeded).
+        s, si, c = analysis.get("sand_percent"), analysis.get("silt_percent"), analysis.get("clay_percent")
+        if s is not None and si is not None and c is not None:
+            findings.append(
+                f"Soil texture is {analysis['texture']} "
+                f"(sand {s:.0f}%, silt {si:.0f}%, clay {c:.0f}%)."
+            )
+
+        cec_status = analysis.get("cec_status")
+        if cec_status and analysis.get("cec") is not None:
+            findings.append(
+                f"Cation exchange capacity is {analysis['cec']:.1f} cmol(+)/kg ({cec_status})."
+            )
 
         if analysis["water_holding_capacity_mm"] < 15:
             findings.append("Low water-holding capacity; frequent irrigation will be necessary.")
