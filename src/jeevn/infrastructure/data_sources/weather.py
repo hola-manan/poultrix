@@ -1,15 +1,32 @@
 """
 Weather data adapter — Open-Meteo client.
 
+Pulls daily climate variables (temp, precipitation, radiation, wind) from
+the archive-api, plus hourly surface soil moisture (`soil_moisture_0_to_7cm`).
+The last-24-hour mean of that hourly series is surfaced as
+`daily.soil_moisture_0_to_7cm_mean` (in m³/m³) — the AOI composer combines
+it with the real SoilGrids texture to produce a fraction-of-field-capacity
+soil-moisture value the downstream agronomic models expect.
+
 On failure, returns the fallback series from `infrastructure.pseudo_satellite`
 with `_fabricated=True` so the report can flag it.
 """
 
 import requests
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 from jeevn.infrastructure import pseudo_satellite
+
+
+def _mean_of_last_n(values: List[Optional[float]], n: int) -> Optional[float]:
+    """Mean of the last `n` non-null values, or None if there aren't any."""
+    if not values:
+        return None
+    tail = [v for v in values[-n:] if v is not None]
+    if not tail:
+        return None
+    return sum(tail) / len(tail)
 
 
 class WeatherDataFetcher:
@@ -57,6 +74,11 @@ class WeatherDataFetcher:
                     "shortwave_radiation_sum",
                     "windspeed_10m_max",
                 ]),
+                # Hourly surface soil moisture (m³/m³). Open-Meteo also
+                # offers 1-3, 3-9, 9-27, 27-81 cm depth layers; 0-7 cm is
+                # the standard "surface" value that matches what SMAP and
+                # NISAR estimate. The composer aggregates to a 24-h mean.
+                "hourly": "soil_moisture_0_to_7cm",
                 "timezone": "auto",
                 "temperature_unit": "celsius",
                 "windspeed_unit": "kmh",
@@ -68,6 +90,11 @@ class WeatherDataFetcher:
             data = response.json()
 
             daily_data = data.get("daily", {})
+            hourly_data = data.get("hourly", {})
+
+            sm_hourly = hourly_data.get("soil_moisture_0_to_7cm", []) or []
+            sm_last_24h_mean = _mean_of_last_n(sm_hourly, n=24)
+
             return {
                 "location": {
                     "latitude": lat,
@@ -82,6 +109,9 @@ class WeatherDataFetcher:
                     "rainfall": daily_data.get("precipitation_sum", []),
                     "solar_radiation": daily_data.get("shortwave_radiation_sum", []),
                     "wind_speed": daily_data.get("windspeed_10m_max", []),
+                    # Mean of the most-recent 24 hourly readings (m³/m³).
+                    # `None` if Open-Meteo returned no soil-moisture values.
+                    "soil_moisture_0_to_7cm_mean": sm_last_24h_mean,
                 },
                 "_fabricated": False,
             }

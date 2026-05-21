@@ -112,6 +112,26 @@ _TEXTURE_INFILTRATION_MM_PER_H: Dict[str, int] = {
     "clay":              1,
 }
 
+# Volumetric water content at field capacity (m³/m³) per USDA texture
+# class. Source: USDA-NRCS / Saxton & Rawls approximate averages.
+# Used to convert Open-Meteo's m³/m³ surface-soil-moisture reading into
+# the fraction-of-field-capacity scale (0.0–1.0+) that downstream
+# agronomic comparisons in `growth_yield/projection.py` etc. expect.
+_TEXTURE_FIELD_CAPACITY_M3M3: Dict[str, float] = {
+    "sand":              0.10,
+    "loamy sand":        0.13,
+    "sandy loam":        0.18,
+    "loam":              0.25,
+    "silt loam":         0.28,
+    "silt":              0.30,
+    "sandy clay loam":   0.27,
+    "clay loam":         0.32,
+    "silty clay loam":   0.36,
+    "sandy clay":        0.30,
+    "silty clay":        0.40,
+    "clay":              0.42,
+}
+
 
 def whc_from_texture(texture: str) -> int:
     return _TEXTURE_WHC_MM_PER_30CM.get(texture, _TEXTURE_WHC_MM_PER_30CM["loam"])
@@ -119,6 +139,16 @@ def whc_from_texture(texture: str) -> int:
 
 def infiltration_from_texture(texture: str) -> int:
     return _TEXTURE_INFILTRATION_MM_PER_H.get(texture, _TEXTURE_INFILTRATION_MM_PER_H["loam"])
+
+
+def field_capacity_from_texture(texture: str) -> float:
+    """Volumetric field capacity (m³/m³) for a USDA texture class.
+    Used to normalise a measured/modelled m³/m³ soil-moisture reading
+    into a fraction-of-field-capacity value (0 = wilting, 1 = saturated).
+    """
+    return _TEXTURE_FIELD_CAPACITY_M3M3.get(
+        texture, _TEXTURE_FIELD_CAPACITY_M3M3["loam"]
+    )
 
 
 # ── Aggregation + unit conversion ──────────────────────────────────────────
@@ -247,7 +277,13 @@ class SoilGridsClient:
 # ── Public adapter: SoilDataFetcher ────────────────────────────────────────
 # Properties for which there is no real source available right now. These
 # are always fabricated until a later task lands real data for them.
-_NO_REAL_SOURCE = {"ec", "soil_moisture_current"}
+#
+# Note: `soil_moisture_current` USED to be in this set, but task #2
+# delegates it to the AOI composer which combines Open-Meteo's hourly
+# soil moisture with our texture-based field-capacity lookup. The composer
+# is responsible for flipping `_fabricated_fields["soil_moisture_current"]`
+# to False when real Open-Meteo data was used.
+_NO_REAL_SOURCE = {"ec"}
 
 
 class SoilDataFetcher:

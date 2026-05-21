@@ -41,20 +41,6 @@ todo-tracking an agent uses.
 
 *(prioritised — top item is the next one to pick up)*
 
-### 2. Add Open-Meteo soil moisture to weather fetch
-- **Status:** pending
-- **Why:** The one dynamic soil property is 100% hardcoded today. Open-Meteo's
-  `soil_moisture_0_to_7cm` is hourly, free, anonymous — one extra param to
-  the call we already make.
-- **Acceptance:**
-  - [ ] Add `soil_moisture_0_to_7cm` to the `hourly=` param in `weather.py`.
-  - [ ] Average the last 24 hours and propagate as
-        `soil["properties"]["soil_moisture_current"]`.
-  - [ ] `_fabricated=False` on success; `True` only on Open-Meteo failure.
-- **Files:**
-  - `src/jeevn/infrastructure/data_sources/weather.py`
-  - `src/jeevn/infrastructure/data_sources/aoi.py`
-
 ### 3. Fix the 3 pre-existing failing tests
 - **Status:** pending
 - **Why:** `test_yield_proxy`, `test_weeds_guidance`, `test_nutrient_stress_score`
@@ -135,6 +121,19 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 2. Add Open-Meteo soil moisture to weather fetch
+- **Resolved:** 2026-05-21
+- One-liner: `weather.py` now also requests hourly `soil_moisture_0_to_7cm`
+  and surfaces a last-24-hours mean (m³/m³). The AOI composer converts
+  it to a fraction-of-field-capacity using a USDA-NRCS field-capacity
+  lookup keyed on the real SoilGrids texture, then writes both the
+  fraction and the raw m³/m³ into `soil.properties`. Per-property
+  fabricated flag for `soil_moisture_current` flips to False when
+  Open-Meteo returned a value. Live-verified at the default farmland
+  AOI: 0.307 m³/m³ raw → 1.0 fraction (saturated, recent rain). With
+  this in, the only persistently-fabricated soil property is
+  `soil.ec` (deferred — no free salinity REST source).
 
 ### 1. Replace hardcoded soil properties with ISRIC SoilGrids
 - **Resolved:** 2026-05-14

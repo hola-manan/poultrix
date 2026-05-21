@@ -19,6 +19,7 @@ from jeevn.infrastructure.data_sources.soil import (
     SoilDataFetcher,
     SoilGridsClient,
     classify_usda_texture,
+    field_capacity_from_texture,
     infiltration_from_texture,
     whc_from_texture,
     _convert_to_target_units,
@@ -58,6 +59,17 @@ def test_whc_and_infiltration_from_texture():
 def test_unknown_texture_falls_back_to_loam_values():
     assert whc_from_texture("nonsense") == whc_from_texture("loam")
     assert infiltration_from_texture("nonsense") == infiltration_from_texture("loam")
+    assert field_capacity_from_texture("nonsense") == field_capacity_from_texture("loam")
+
+
+def test_field_capacity_ordering_matches_soil_physics():
+    """Field capacity should increase with clay content: sand < loam < clay."""
+    assert field_capacity_from_texture("sand") < field_capacity_from_texture("loam")
+    assert field_capacity_from_texture("loam") < field_capacity_from_texture("clay")
+    # Within reasonable physical bounds
+    assert 0.05 <= field_capacity_from_texture("sand") <= 0.15
+    assert 0.20 <= field_capacity_from_texture("loam") <= 0.30
+    assert 0.35 <= field_capacity_from_texture("clay") <= 0.50
 
 
 # ── Aggregation + unit conversion ──────────────────────────────────────────

@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 from .weather import WeatherDataFetcher
-from .soil import SoilDataFetcher
+from .soil import SoilDataFetcher, field_capacity_from_texture
 from .geocoding import GeographicDataFetcher
 
 # Phenology is pure domain data (no I/O) — infrastructure may depend on domain.
@@ -45,7 +45,8 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
 
     weather_start = start_date or sowing_date
     weather = WeatherDataFetcher.fetch_weather(lat, lon, weather_start, end_date)
-    if weather.pop("_fabricated", False):
+    weather_fabricated = weather.pop("_fabricated", False)
+    if weather_fabricated:
         fabricated.append("weather")
 
     soil = SoilDataFetcher.fetch_soil_data(lat, lon, location_name)
@@ -53,7 +54,11 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     # still fabricated contributes a `soil.<property>` entry to the report's
     # data-quality list, so the UI can warn about exactly the missing pieces
     # (e.g. salinity) rather than the whole soil section.
-    soil_fabricated_fields = soil.pop("_fabricated_fields", None)
+    #
+    # NOTE: we read but don't pop `_fabricated_fields` — the SM overlay
+    # below needs to flip its `soil_moisture_current` flag in place, and
+    # downstream consumers may want to inspect the per-field flags too.
+    soil_fabricated_fields = soil.get("_fabricated_fields")
     if soil_fabricated_fields is None:
         # Legacy whole-dict flag (kept for backward compat with any caller
         # still using `_fabricated: True`).
@@ -63,6 +68,25 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         for prop, is_fab in soil_fabricated_fields.items():
             if is_fab:
                 fabricated.append(f"soil.{prop}")
+
+    # Real surface soil moisture from Open-Meteo (m³/m³), normalised to a
+    # fraction-of-field-capacity using SoilGrids' texture. Without the
+    # texture-based conversion, raw m³/m³ values (typical 0.2-0.3) would
+    # trip the < 0.5 thresholds in growth_yield/projection.py and produce
+    # spurious "water stress" verdicts even on well-watered soil.
+    sm_m3m3 = (weather.get("daily") or {}).get("soil_moisture_0_to_7cm_mean")
+    if not weather_fabricated and sm_m3m3 is not None:
+        texture = soil["properties"].get("texture", "loam")
+        fc_m3m3 = field_capacity_from_texture(texture)
+        sm_fraction = max(0.0, min(1.0, sm_m3m3 / fc_m3m3)) if fc_m3m3 else 0.0
+        soil["properties"]["soil_moisture_current"] = round(sm_fraction, 2)
+        soil["properties"]["soil_moisture_m3m3"] = round(sm_m3m3, 3)
+        if soil_fabricated_fields is not None:
+            soil_fabricated_fields["soil_moisture_current"] = False
+        # Drop the now-stale `soil.soil_moisture_current` entry from the
+        # top-level fabricated list (it was added a few lines above when
+        # we first scanned `_fabricated_fields`).
+        fabricated = [f for f in fabricated if f != "soil.soil_moisture_current"]
 
     # If SoilGrids said the AOI centroid is in built-up land, surface a
     # prominent alert so the UI tells the user to redraw the polygon over

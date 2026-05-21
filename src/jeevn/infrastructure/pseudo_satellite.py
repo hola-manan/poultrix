@@ -169,7 +169,8 @@ FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "soil.water_holding_capacity":   "Water-holding capacity (no real texture to derive from)",
     "soil.infiltration_rate":        "Infiltration rate (no real texture to derive from)",
     "soil.bulk_density":             "Bulk density (SoilGrids did not return a value)",
-    "soil.soil_moisture_current":    "Soil moisture (Open-Meteo soil moisture not yet integrated — task #2)",
+    "soil.soil_moisture_current":    "Soil moisture (Open-Meteo unreachable; using fallback default)",
+    "soil.soil_moisture_m3m3":       "Raw soil moisture m³/m³ (Open-Meteo unreachable)",
 }
 
 
