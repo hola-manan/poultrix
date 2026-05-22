@@ -49,10 +49,19 @@ htmlcov/
 *~
 .DS_Store
 
-# ── Runtime artifacts (the `data/` exclusion covers most rasters/JSON/CSV) ─
-data/
+# ── Runtime artifacts (rasters/JSON/CSV/cache) ──────────────────────────────
+# Exclude everything inside data/ EXCEPT the bundled-dataset subdir below.
+# We use `data/*` rather than `data/` so the directory itself isn't blocked
+# from being walked — otherwise the `!data/static/` negation would be a
+# no-op (git can't re-include children of an excluded parent directory).
+data/*
 *.log
 *.err.log
+
+# Bundled static datasets (small, CC-licensed) ship with the repo.
+# Currently: ISRIC global salinity raster clipped to India (~13 MB,
+# CC BY 4.0, Wageningen University & ISRIC).
+!data/static/
 
 # ── Environment / secrets ──────────────────────────────────────────────────
 .env

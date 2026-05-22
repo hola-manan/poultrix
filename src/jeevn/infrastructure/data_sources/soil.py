@@ -1,11 +1,18 @@
 """
-Soil data adapter — ISRIC SoilGrids v2.0 client.
+Soil data adapter — ISRIC SoilGrids v2.0 client + bundled salinity raster.
 
 Fetches real soil properties at the AOI centroid from the free, anonymous
 SoilGrids REST API and aggregates the 0–5/5–15/15–30 cm depth layers into a
 single 0–30 cm depth-weighted mean. Derives USDA texture class from the
 real sand/silt/clay percentages, and looks up an approximate water-holding
 capacity and infiltration rate from the resulting texture class.
+
+Salinity (EC) is read from the bundled ISRIC GSSmap 2016 classification
+raster clipped to India (see `scripts/dev_smoke/build_salinity_clip.py`).
+The raster encodes the FAO/USDA 5-class salinity scheme (0=non-saline ...
+4=extremely saline); we map each class to a representative EC midpoint in
+dS/m. AOIs outside the raster bbox fall back to the fabricated template
+and `_fabricated_fields["ec"]` stays True.
 
 When SoilGrids is unreachable or returns partial data, the caller falls back
 to `pseudo_satellite.make_default_soil` and the response is marked fabricated
@@ -14,6 +21,7 @@ on a per-property basis via `_fabricated_fields`.
 This replaces the prior stub that always returned the regional template.
 """
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -274,6 +282,107 @@ class SoilGridsClient:
         return result
 
 
+# ── Bundled salinity raster (ISRIC GSSmap 2016, India clip) ────────────────
+# The raster encodes the FAO/USDA 5-class salinity scheme (EC thresholds
+# from USDA Salinity Lab Handbook 60):
+#   class 0: non-saline       (EC <= 2 dS/m)
+#   class 1: slightly saline  (2 < EC <= 4)
+#   class 2: moderately       (4 < EC <= 8)
+#   class 3: strongly         (8 < EC <= 16)
+#   class 4: extremely        (EC > 16)
+#
+# We surface BOTH the class (semantic, what the source actually publishes)
+# and a representative EC midpoint in dS/m (so downstream numerical code
+# in `domain/soil/management.py` keeps working unchanged).
+_SALINITY_CLASS_LABELS: Dict[int, str] = {
+    0: "non-saline",
+    1: "slightly saline",
+    2: "moderately saline",
+    3: "strongly saline",
+    4: "extremely saline",
+}
+_SALINITY_CLASS_EC_MIDPOINT_DSM: Dict[int, float] = {
+    0: 1.0,    # midpoint of 0-2 dS/m
+    1: 3.0,    # midpoint of 2-4
+    2: 6.0,    # midpoint of 4-8
+    3: 12.0,   # midpoint of 8-16
+    4: 18.0,   # representative above 16 (no upper bound)
+}
+
+# Path to the bundled India clip. Built once by
+# `scripts/dev_smoke/build_salinity_clip.py` and committed to the repo.
+_SALINITY_RASTER_PATH = (
+    Path(__file__).resolve().parents[4] / "data" / "static" / "salinity_india.tif"
+)
+
+
+class SalinityRasterSampler:
+    """Reads salinity class from the bundled India-clipped ISRIC raster.
+
+    `rasterio` is imported lazily because (a) it has a heavy GDAL dependency
+    we don't want to pay for at import time when the sampler isn't called,
+    and (b) tests that mock this sampler shouldn't need rasterio installed.
+
+    The raster dataset is opened once and cached on the class. If the raster
+    file is missing (a fresh clone where the dev-smoke build script hasn't
+    been run yet), `sample()` returns None and salinity stays fabricated.
+    """
+
+    _dataset = None
+    _open_attempted = False
+
+    @classmethod
+    def _get_dataset(cls):
+        if cls._open_attempted:
+            return cls._dataset
+        cls._open_attempted = True
+        try:
+            import rasterio  # noqa: WPS433 — intentional lazy import
+            if _SALINITY_RASTER_PATH.exists():
+                cls._dataset = rasterio.open(_SALINITY_RASTER_PATH)
+            else:
+                print(
+                    f"[WARN] Salinity raster not found at {_SALINITY_RASTER_PATH}; "
+                    "run scripts/dev_smoke/build_salinity_clip.py to generate it. "
+                    "Falling back to fabricated EC."
+                )
+        except Exception as e:
+            print(f"[WARN] Could not open salinity raster: {e}")
+        return cls._dataset
+
+    @classmethod
+    def sample(cls, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+        """Return `{ec, salinity_class, salinity_label}` for (lat, lon), or
+        None if the point lies outside the raster's bbox or the raster is
+        unavailable.
+        """
+        ds = cls._get_dataset()
+        if ds is None:
+            return None
+
+        left, bottom, right, top = ds.bounds
+        if not (left <= lon <= right and bottom <= lat <= top):
+            return None
+
+        try:
+            # `sample` returns an iterator of arrays — one entry per point.
+            value = next(ds.sample([(lon, lat)]))[0]
+        except Exception as e:
+            print(f"[WARN] Salinity sample failed at ({lat}, {lon}): {e}")
+            return None
+
+        cls_int = int(value)
+        if cls_int not in _SALINITY_CLASS_EC_MIDPOINT_DSM:
+            # Unexpected category — treat as no data rather than guess.
+            return None
+
+        return {
+            "ec": _SALINITY_CLASS_EC_MIDPOINT_DSM[cls_int],
+            "salinity_class": cls_int,
+            "salinity_label": _SALINITY_CLASS_LABELS[cls_int],
+        }
+
+
 # ── Public adapter: SoilDataFetcher ────────────────────────────────────────
 # Properties for which there is no real source available right now. These
 # are always fabricated until a later task lands real data for them.
@@ -283,7 +392,11 @@ class SoilGridsClient:
 # soil moisture with our texture-based field-capacity lookup. The composer
 # is responsible for flipping `_fabricated_fields["soil_moisture_current"]`
 # to False when real Open-Meteo data was used.
-_NO_REAL_SOURCE = {"ec"}
+#
+# `ec` USED to be in this set, but task #5 introduced the bundled ISRIC
+# GSSmap 2016 raster — within its bbox (currently India only) `ec` is real;
+# outside, it stays fabricated and the per-property flag remains True.
+_NO_REAL_SOURCE: set = set()
 
 
 class SoilDataFetcher:
@@ -340,6 +453,18 @@ class SoilDataFetcher:
         # Always-fabricated properties (no real source available yet).
         for key in _NO_REAL_SOURCE:
             fabricated[key] = True
+
+        # Real EC + salinity class from the bundled ISRIC raster (India only
+        # for now). Out-of-coverage AOIs keep the fabricated template value
+        # and the per-property fabricated flag stays True.
+        salinity = SalinityRasterSampler.sample(lat, lon)
+        if salinity is not None:
+            properties["ec"] = salinity["ec"]
+            properties["salinity_class"] = salinity["salinity_class"]
+            properties["salinity_label"] = salinity["salinity_label"]
+            fabricated["ec"] = False
+            fabricated["salinity_class"] = False
+            fabricated["salinity_label"] = False
 
         # Drop the legacy whole-dict flag if pseudo_satellite still sets it.
         base.pop("_fabricated", None)

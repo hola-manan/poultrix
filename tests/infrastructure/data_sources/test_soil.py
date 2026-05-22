@@ -8,14 +8,17 @@ Tests for the SoilGrids-backed soil data adapter:
 - SOC g/kg → % normalisation
 - Per-property `_fabricated_fields` shape on both real-fetch and fallback paths
 - Whole-fetch fallback when SoilGrids is unreachable
+- ISRIC GSSmap salinity raster sampling (in-bbox, out-of-bbox, raster missing)
 """
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from jeevn.infrastructure.data_sources import soil as soil_mod
 from jeevn.infrastructure.data_sources.soil import (
+    SalinityRasterSampler,
     SoilDataFetcher,
     SoilGridsClient,
     classify_usda_texture,
@@ -26,6 +29,17 @@ from jeevn.infrastructure.data_sources.soil import (
     _depth_weighted_mean,
     _normalise_soc_to_percent,
 )
+
+
+@pytest.fixture
+def disable_salinity_sampler():
+    """For tests asserting "all fields fabricated" behaviour: pretend the
+    salinity raster is unavailable so the public adapter doesn't overlay
+    a real EC value (which would correctly flip `fabricated["ec"]` to
+    False but break the test's all-fabricated invariant).
+    """
+    with patch.object(SalinityRasterSampler, "sample", return_value=None):
+        yield
 
 
 # ── Texture classifier ─────────────────────────────────────────────────────
@@ -204,7 +218,11 @@ def test_soilgrids_client_returns_none_on_network_error():
 
 # ── Public adapter — fabricated-field flags ────────────────────────────────
 
-def test_fetch_soil_data_marks_real_fields_not_fabricated():
+def test_fetch_soil_data_marks_real_fields_not_fabricated(disable_salinity_sampler):
+    """Sanity test for the SoilGrids overlay: with the salinity sampler
+    disabled, the only real properties should be the ones SoilGrids
+    returned + their derived texture/WHC/infiltration.
+    """
     mock_resp = type("R", (), {
         "raise_for_status": lambda self: None,
         "json": lambda self: _mock_soilgrids_response_ganganagar(),
@@ -224,12 +242,15 @@ def test_fetch_soil_data_marks_real_fields_not_fabricated():
     assert fields["texture"] is False
     assert fields["water_holding_capacity"] is False
     assert fields["infiltration_rate"] is False
-    # EC and soil moisture have no real source yet
+    # With salinity sampler disabled, EC + soil moisture stay fabricated
     assert fields["ec"] is True
     assert fields["soil_moisture_current"] is True
 
 
-def test_fetch_soil_data_marks_all_fields_fabricated_on_network_failure():
+def test_fetch_soil_data_marks_all_fields_fabricated_on_network_failure(disable_salinity_sampler):
+    """SoilGrids down AND salinity sampler disabled → every property is the
+    fabricated regional template.
+    """
     with patch.object(soil_mod.requests, "get", side_effect=Exception("API down")):
         soil = SoilDataFetcher.fetch_soil_data(29.9, 73.9, "Ganganagar")
 
@@ -291,7 +312,7 @@ def test_client_returns_no_data_marker_for_urban_centroid():
     assert result == {"_no_data_in_land_mask": True}
 
 
-def test_fetch_soil_data_marks_aoi_in_built_up_land_when_centroid_is_null():
+def test_fetch_soil_data_marks_aoi_in_built_up_land_when_centroid_is_null(disable_salinity_sampler):
     """All values stay fabricated AND _aoi_in_built_up_land flag is set."""
     mock_resp = type("R", (), {
         "raise_for_status": lambda self: None,
@@ -317,7 +338,7 @@ def test_fetch_soil_data_does_not_mark_built_up_when_real_values_returned():
     assert soil["_aoi_in_built_up_land"] is False
 
 
-def test_fetch_soil_data_does_not_mark_built_up_on_network_failure():
+def test_fetch_soil_data_does_not_mark_built_up_on_network_failure(disable_salinity_sampler):
     """Network failure is different from built-up land — distinguishable."""
     with patch.object(soil_mod.requests, "get", side_effect=Exception("DNS fail")):
         soil = SoilDataFetcher.fetch_soil_data(29.9, 73.9, "Ganganagar")
@@ -326,3 +347,100 @@ def test_fetch_soil_data_does_not_mark_built_up_on_network_failure():
     # _aoi_in_built_up_land flag distinguishes "service down" from "AOI in
     # built-up land".
     assert all(soil["_fabricated_fields"].values())
+
+
+# ── ISRIC GSSmap salinity raster sampling ──────────────────────────────────
+
+def _reset_salinity_sampler_cache():
+    """Force the next call to re-open the raster (used by tests that
+    monkeypatch `_SALINITY_RASTER_PATH`).
+    """
+    if SalinityRasterSampler._dataset is not None:
+        try:
+            SalinityRasterSampler._dataset.close()
+        except Exception:
+            pass
+    SalinityRasterSampler._dataset = None
+    SalinityRasterSampler._open_attempted = False
+
+
+def test_salinity_sampler_returns_none_outside_india_bbox():
+    """Salinity raster only covers India (bbox lon 67..99, lat 5..38).
+    Sampling outside should return None — EC stays fabricated for non-Indian AOIs.
+    """
+    _reset_salinity_sampler_cache()
+    # Sao Paulo, Brazil
+    assert SalinityRasterSampler.sample(lat=-23.5, lon=-46.6) is None
+    # Iowa, USA
+    assert SalinityRasterSampler.sample(lat=42.0, lon=-93.6) is None
+
+
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[3] / "data" / "static" / "salinity_india.tif").exists(),
+    reason="Bundled salinity raster not present (run scripts/dev_smoke/build_salinity_clip.py).",
+)
+def test_salinity_sampler_returns_class_and_ec_for_india_aoi():
+    """Default farmland AOI (Ganganagar) is within India bbox; should yield
+    a valid {ec, salinity_class, salinity_label} dict.
+    """
+    _reset_salinity_sampler_cache()
+    result = SalinityRasterSampler.sample(lat=29.92, lon=73.97)
+    assert result is not None
+    assert "ec" in result
+    assert "salinity_class" in result
+    assert "salinity_label" in result
+    # Class is one of the 5 FAO categories
+    assert result["salinity_class"] in {0, 1, 2, 3, 4}
+    # EC midpoint is in the matching range
+    assert 0.5 <= result["ec"] <= 25.0
+    # Label is human-readable
+    assert "saline" in result["salinity_label"]
+
+
+def test_salinity_sampler_handles_missing_raster(monkeypatch, tmp_path):
+    """Fresh clone where the dev-smoke build script hasn't been run —
+    raster file is absent; sampler returns None without raising.
+    """
+    bogus_path = tmp_path / "does_not_exist.tif"
+    monkeypatch.setattr(soil_mod, "_SALINITY_RASTER_PATH", bogus_path)
+    _reset_salinity_sampler_cache()
+
+    assert SalinityRasterSampler.sample(lat=29.92, lon=73.97) is None
+    # Clean up the cache so other tests get the real raster back
+    _reset_salinity_sampler_cache()
+
+
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[3] / "data" / "static" / "salinity_india.tif").exists(),
+    reason="Bundled salinity raster not present (run scripts/dev_smoke/build_salinity_clip.py).",
+)
+def test_fetch_soil_data_overlays_real_ec_inside_india():
+    """Public adapter at the default Ganganagar AOI should flip ec/salinity_class/
+    salinity_label to real (`_fabricated_fields[*]` False) and populate the
+    properties from the bundled raster.
+    """
+    _reset_salinity_sampler_cache()
+    # Mock SoilGrids failure so we isolate the salinity overlay
+    with patch.object(soil_mod.requests, "get", side_effect=Exception("isolate")):
+        soil = SoilDataFetcher.fetch_soil_data(29.92, 73.97, "Ganganagar")
+
+    fields = soil["_fabricated_fields"]
+    assert fields["ec"] is False
+    assert fields["salinity_class"] is False
+    assert fields["salinity_label"] is False
+    # Property keys present
+    assert "ec" in soil["properties"]
+    assert "salinity_class" in soil["properties"]
+    assert soil["properties"]["salinity_class"] in {0, 1, 2, 3, 4}
+
+
+def test_fetch_soil_data_does_not_overlay_ec_outside_india(disable_salinity_sampler):
+    """Out-of-coverage AOI keeps the fabricated template EC; flag stays True."""
+    # Use an AOI clearly outside India bbox (Brazil); disable sampler to
+    # force the same behaviour deterministically.
+    with patch.object(soil_mod.requests, "get", side_effect=Exception("isolate")):
+        soil = SoilDataFetcher.fetch_soil_data(-23.5, -46.6, "Sao Paulo")
+
+    assert soil["_fabricated_fields"]["ec"] is True
+    # Salinity class never gets added since the sampler returned None
+    assert "salinity_class" not in soil["_fabricated_fields"]

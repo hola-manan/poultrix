@@ -159,7 +159,7 @@ FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     # *some* properties are fabricated (e.g. SoilGrids returned real pH but
     # we still have no real EC source).
     "soil.ph":                       "Soil pH (SoilGrids did not return a value at this location)",
-    "soil.ec":                       "Soil EC / salinity (no free global source — using regional template)",
+    "soil.ec":                       "Soil EC / salinity (AOI is outside the bundled ISRIC salinity raster's bbox — using regional template)",
     "soil.organic_carbon_percent":   "Soil organic carbon (SoilGrids did not return a value at this location)",
     "soil.sand_percent":             "Soil sand % (SoilGrids unreachable)",
     "soil.silt_percent":             "Soil silt % (SoilGrids unreachable)",

@@ -74,19 +74,6 @@ todo-tracking an agent uses.
         pass YYYY-MM-DD / Open-Meteo modelled".
 - **Defers:** SAR-as-truth Open-Meteo calibration → task #6.
 
-### 5. Bundle ISRIC global salinity raster for real EC
-- **Status:** pending (backlog)
-- **Why:** No free REST source exists for salinity. The ISRIC global salinity
-  GeoTIFF (~50–200 MB at 1 km) can be bundled and sampled with rasterio.
-  Closest path to "real EC" without paid APIs.
-- **Acceptance:**
-  - [ ] Download and commit the raster under `data/static/` (set up Git LFS
-        if file size >100 MB — coordinate with human before committing
-        large binary).
-  - [ ] Sampling function in `soil.py` that returns EC at the AOI centroid.
-  - [ ] Removes `salinity` from `data_quality.fabricated_fields` when sample
-        is in raster coverage.
-
 ### 6. NISAR ↔ Open-Meteo SM calibration (research-grade)
 - **Status:** pending (backlog, depends on #4)
 - **Why:** Once paired NISAR + Open-Meteo SM observations accumulate per AOI,
@@ -115,6 +102,29 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 5. Bundle ISRIC global salinity raster for real EC
+- **Resolved:** 2026-05-21
+- One-liner: `scripts/dev_smoke/build_salinity_clip.py` fetches the 15
+  ISRIC GSSmap 2016 tiles (~363 MB total, CC BY 4.0), mosaics + clips them
+  to an India bbox (lat 5-38, lon 67-99) at native ~250 m resolution, and
+  writes `data/static/salinity_india.tif` (13.2 MB, EPSG:4326, int32, 5-class
+  FAO scheme). `SalinityRasterSampler` in `infrastructure/data_sources/soil.py`
+  reads the bundled raster lazily via rasterio, returns
+  `{ec, salinity_class, salinity_label}` for points inside the bbox, None
+  outside. `SoilDataFetcher` now overlays real EC + class + label onto the
+  soil properties when sampling succeeds; `_fabricated_fields["ec"]` flips
+  to False. `_NO_REAL_SOURCE` is now empty (was `{"ec"}` — every soil
+  property has at least a conditional real source). Live-verified at the
+  default Ganganagar AOI: previously fabricated `ec=0.4` → real raster
+  reading `ec=3.0 dS/m, class 1 "slightly saline"`, and
+  `data_quality.fabricated_fields` no longer lists any `soil.*` entries
+  (only the still-fabricated NDVI/RVI/RSM indices remain). `.gitignore`
+  exempts `data/static/` so the clip ships with the repo (no LFS needed).
+  6 new tests pass (3 raster-sampling + 2 public-adapter overlay + 1
+  out-of-coverage); 4 pre-existing tests updated to mock the new
+  independent salinity source. Tile cache in `data/cache/isric_salinity_2016/`
+  can be deleted post-build to reclaim ~360 MB.
 
 ### 3. Fix the 3 pre-existing failing tests
 - **Resolved:** 2026-05-21
