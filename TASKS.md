@@ -74,6 +74,37 @@ todo-tracking an agent uses.
         pass YYYY-MM-DD / Open-Meteo modelled".
 - **Defers:** SAR-as-truth Open-Meteo calibration → task #6.
 
+### 8. Add NDWI with Gao's (1996) formulation alongside the existing index
+- **Status:** pending (backlog)
+- **Why:** `remote_sensing/analysis/signals.py:15` currently exposes one
+  index named `ndwi(green, swir)`. That formula `(green - swir)/(green + swir)`
+  is actually Xu (2006) **MNDWI** — designed for open-water-body detection
+  in urban scenes. Gao (1996) **NDWI** is a different (and arguably more
+  agriculturally relevant) index: `(NIR - SWIR) / (NIR + SWIR)`. It
+  measures **vegetation canopy water content / moisture stress** rather
+  than surface water, and is the one most agronomic literature means
+  when it says "NDWI" in a crop context.
+- **Acceptance:**
+  - [ ] New function `ndwi_gao(nir, swir)` in `signals.py` with explicit
+        Gao 1996 reference in the docstring.
+  - [ ] Decide naming for the existing index — either:
+        (a) rename the current `ndwi` to `mndwi_xu` and update all callers, OR
+        (b) keep `ndwi` as Xu MNDWI for backward compat but rename the
+            variable label in narratives/UI to reflect what it is.
+        Probably (a) is cleaner; flag in the PR.
+  - [ ] Wire `ndwi_gao` into the crop-health / moisture-stress narrative
+        wherever vegetation water-content makes more sense than open-water
+        detection (likely `growth_yield/projection.py` water-stress branch
+        and the irrigation-schedule moisture commentary).
+  - [ ] Tests in `tests/remote_sensing/analysis/test_indices.py`:
+        known-input reference cases for both formulations + a regression
+        test that ensures they produce different values on the same data
+        (so a future refactor can't silently collapse them).
+  - [ ] **Update the 13 docs** per the doc-sync rule: at minimum
+        `src/jeevn/remote_sensing/OVERVIEW.md` (new index) and
+        `PROCESSES.md` (how the moisture-stress signal is computed).
+        Touch others only if behaviour visible to them changes.
+
 ### 6. NISAR ↔ Open-Meteo SM calibration (research-grade)
 - **Status:** pending (backlog, depends on #4)
 - **Why:** Once paired NISAR + Open-Meteo SM observations accumulate per AOI,
