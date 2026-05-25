@@ -34,6 +34,7 @@ from reportlab.platypus import (
 # NDVI / NDWI parcel imagery is supplied as real PNG bytes by the caller — see
 # generate_pdf(..., ndvi_png=, ndwi_png=).
 from jeevn.ui.visuals import scale_bar as _scale_bar, PIL_AVAILABLE
+from jeevn.application.narratives import terrain_irrigation_advice
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 DARK_GREEN   = HexColor('#1a5c38')
@@ -298,6 +299,7 @@ def generate_pdf(report: Dict[str, Any],
     et0         = irrigation.get('et0_mm_per_day', 6.5)
     kc          = irrigation.get('kc', 0.95)
     daily       = irrigation.get('daily_schedule', [])
+    terrain     = irrigation.get('terrain') or {}
     growth_stage_name = (yield_proj.get('current_growth_stage') or 'growth').replace('_', ' ').title()
 
     story.append(Paragraph('3.  Irrigation Schedule', S['section']))
@@ -343,10 +345,31 @@ def generate_pdf(report: Dict[str, Any],
         f'Baseline Kc ({kc:.2f}) was adjusted for heat stress and high evapotranspiration. '
         f'{irr_days} events are scheduled; alternate days maintain soil moisture without saturation.',
         S['body']))
+
+    # Slope / aspect addendum + source-aware references (mirrors the
+    # Streamlit irrigation_schedule section).
+    slope_pct = terrain.get('slope_percent')
+    aspect_compass = terrain.get('aspect_compass') or 'flat'
+    elevation_m = terrain.get('elevation_m')
+    terrain_source = terrain.get('source')
+    if slope_pct is not None:
+        story.append(Paragraph(
+            f'<b>Terrain:</b> elevation {elevation_m:.0f} m, slope {slope_pct:.1f}% '
+            f'facing {aspect_compass}. '
+            + terrain_irrigation_advice(slope_pct, aspect_compass),
+            S['body']))
+
+    ref_parts = [
+        f'ET0 calculated via Hargreaves-Samani for lat {lat}°N.',
+        f'Kc values sourced from FAO-56 for {crop_name.lower()} cultivation.',
+        'Local climate data informs heat-stress adjustments.',
+    ]
+    if terrain_source == 'open-elevation':
+        ref_parts.append('Slope/aspect from Open-Elevation (SRTM ~30 m) via Horn 1981 kernel.')
+    elif terrain_source == 'bundled-dem':
+        ref_parts.append('Slope/aspect from bundled ETOPO 2022 30 arc-sec India clip (Open-Elevation unreachable).')
     story.append(Paragraph(
-        f'<i>References: ET0 calculated via Hargreaves-Samani for lat {lat}°N. '
-        f'Kc values sourced from FAO-56 for {crop_name.lower()} cultivation. '
-        'Local climate data informs heat-stress adjustments.</i>',
+        '<i>References: ' + ' '.join(ref_parts) + '</i>',
         S['ref']))
 
     story.append(PageBreak())

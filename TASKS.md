@@ -86,22 +86,42 @@ todo-tracking an agent uses.
   - [ ] Advisory output annotates whether the SM value is raw Open-Meteo,
         calibrated Open-Meteo, or direct NISAR.
 
-### 7. DEM-derived slope + aspect for the AOI
-- **Status:** pending (backlog)
-- **Why:** Slope affects drainage + irrigation choices; aspect affects
-  insolation. Free via OpenTopography REST against Copernicus DEM 30 m.
-- **Acceptance:**
-  - [ ] New adapter `data_sources/terrain.py`.
-  - [ ] Returns mean slope (%) and mean aspect (compass degrees) over the
-        AOI polygon.
-  - [ ] Wired into the irrigation_schedule narrative in `soil_growth.py`
-        and `pdf/generator.py`.
-
 ---
 
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 7. DEM-derived slope + aspect for the AOI
+- **Resolved:** 2026-05-23
+- One-liner: New `infrastructure/data_sources/terrain.py` with a two-tier
+  source: PRIMARY = Open-Elevation REST API (keyless, SRTM-backed) — sends
+  a 3×3 elevation grid request (~30 m spacing) around the AOI centroid and
+  computes slope + aspect locally via the Horn 1981 kernel. FALLBACK =
+  bundled `data/static/dem_india.tif` (13.78 MB int16 clipped from NOAA
+  ETOPO 2022 30 arc-sec global via `scripts/dev_smoke/build_dem_clip.py`
+  using rasterio `/vsicurl/` HTTP range reads so we never download the
+  whole 1.58 GB source). LAST RESORT = pseudo-satellite default
+  (Indo-Gangetic plain typical values) — surfaced as `terrain` in
+  `data_quality.fabricated_fields`. `TerrainDataFetcher.fetch_terrain`
+  returns `{slope_percent, aspect_degrees, aspect_compass, elevation_m,
+  source}` where `source ∈ {open-elevation, bundled-dem, fabricated}`.
+  Wired into the AOI composer + advisory_service so the irrigation_schedule
+  component carries terrain through to both the Streamlit section
+  (`ui/sections/irrigation_schedule.py`) and the PDF generator
+  (`ui/pdf/generator.py`). Branching narrative lives in
+  `application/narratives.py` (single source of truth for both renderers):
+  <2% slope → basin OK; 2–5% → prefer drip; >5% → drip + contour/terracing.
+  References note adapts to the source ("Slope/aspect from Open-Elevation
+  (SRTM ~30 m) via Horn 1981 kernel" vs "from bundled ETOPO 2022 30 arc-sec
+  India clip (Open-Elevation unreachable)"). 26 new tests pass (Horn math
+  reference cases, aspect→compass conversion, OpenElevation client happy
+  path + failures, LocalDEMSampler bbox + missing-file, two-tier
+  composition). Live-verified at: Ganganagar (flat, 180 m, source
+  open-elevation), Shimla (41.7% slope, 1959 m), Mumbai (flat, 3 m) —
+  and the fallback path independently sampled (Shimla 11% W facing,
+  2089 m from bundled DEM when Open-Elevation simulated-down). License:
+  NOAA ETOPO is U.S. government public domain.
 
 ### 5. Bundle ISRIC global salinity raster for real EC
 - **Resolved:** 2026-05-21

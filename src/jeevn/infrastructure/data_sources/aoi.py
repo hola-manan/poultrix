@@ -13,6 +13,7 @@ from typing import Dict, Any, List
 from .weather import WeatherDataFetcher
 from .soil import SoilDataFetcher, field_capacity_from_texture
 from .geocoding import GeographicDataFetcher
+from .terrain import TerrainDataFetcher
 
 # Phenology is pure domain data (no I/O) — infrastructure may depend on domain.
 from jeevn.domain.crop.phenology import CropPhenologyDatabase
@@ -108,6 +109,16 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
             ),
         })
 
+    # Terrain (slope + aspect). Two-tier: Open-Elevation -> bundled DEM ->
+    # fabricated defaults. The fetcher always returns a dict; the only
+    # signal we surface is `_fabricated` (True iff both real sources
+    # failed). The `source` field on the dict ("open-elevation",
+    # "bundled-dem", "fabricated") tells downstream consumers where the
+    # values came from.
+    terrain = TerrainDataFetcher.fetch_terrain(lat, lon)
+    if terrain.pop("_fabricated", False):
+        fabricated.append("terrain")
+
     crop_data = CropPhenologyDatabase.get_crop_data(crop_name)
     t_base = crop_data.get("t_base", 10.0)
 
@@ -121,6 +132,7 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         "location": location,
         "weather": weather,
         "soil": soil,
+        "terrain": terrain,
         "crop": crop_data,
         "current_growth_stage": CropPhenologyDatabase.get_current_growth_stage(
             crop_name, days_since_sowing, accumulated_gdd=accumulated_gdd),

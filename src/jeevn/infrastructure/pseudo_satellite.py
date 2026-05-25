@@ -76,6 +76,18 @@ DEFAULT_LOCATION: Dict[str, Any] = {
 }
 
 
+# ── Terrain (slope + aspect fallback) ───────────────────────────────────────
+# Used by `data_sources/terrain.py` only when BOTH the Open-Elevation API
+# and the bundled ETOPO India clip are unavailable. The default mimics the
+# Indo-Gangetic plain (typical demo AOI): essentially flat, south-facing.
+DEFAULT_TERRAIN: Dict[str, Any] = {
+    "slope_percent": 0.5,
+    "aspect_degrees": 180.0,
+    "aspect_compass": "flat",
+    "elevation_m": 200.0,
+}
+
+
 # ── AOI / crop defaults ──────────────────────────────────────────────────────
 DEFAULT_DAYS_SINCE_SOWING = 60
 DEFAULT_AREA_ACRES = 0.421
@@ -144,6 +156,17 @@ def make_default_location(lat: float, lon: float) -> Dict[str, Any]:
     }
 
 
+def make_default_terrain() -> Dict[str, Any]:
+    """Build a fully-fabricated terrain dict. Caller (TerrainDataFetcher)
+    uses this as the last-resort fallback when both Open-Elevation and the
+    bundled DEM raster are unavailable.
+    """
+    return {
+        **DEFAULT_TERRAIN,
+        "_fabricated": True,
+    }
+
+
 # ── Human-readable descriptions for the UI banner ────────────────────────────
 FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "ndvi": "Normalized Difference Vegetation Index (no satellite reading available)",
@@ -171,6 +194,10 @@ FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "soil.bulk_density":             "Bulk density (SoilGrids did not return a value)",
     "soil.soil_moisture_current":    "Soil moisture (Open-Meteo unreachable; using fallback default)",
     "soil.soil_moisture_m3m3":       "Raw soil moisture m³/m³ (Open-Meteo unreachable)",
+
+    # Terrain (slope + aspect). Fabricated only when BOTH Open-Elevation
+    # and the bundled ETOPO India clip failed — see data_sources/terrain.py.
+    "terrain":                       "Slope + aspect (both Open-Elevation API and bundled DEM unavailable; using Indo-Gangetic plain default)",
 }
 
 

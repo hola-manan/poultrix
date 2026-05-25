@@ -6,6 +6,8 @@ narrative + references. Mirrors PDF page 2.
 import streamlit as st
 import pandas as pd
 
+from jeevn.application.narratives import terrain_irrigation_advice
+
 
 def render(components: dict, *, crop_name: str, location: str, lat: float,
            growth_stage_name: str):
@@ -21,6 +23,7 @@ def render(components: dict, *, crop_name: str, location: str, lat: float,
     et0 = components.get('et0_mm_per_day', 6.5)
     kc = components.get('kc', 0.95)
     daily = components.get('daily_schedule', [])
+    terrain = components.get('terrain') or {}
 
     st.markdown(
         f"**Total Water:** {total_water} mm | "
@@ -63,8 +66,28 @@ def render(components: dict, *, crop_name: str, location: str, lat: float,
         f"heat stress and high evapotranspiration. {irr_days} events are scheduled; "
         "alternate days maintain soil moisture without saturation."
     )
-    st.caption(
-        f"*References: ET0 calculated via Hargreaves-Samani for lat {lat}°N. "
-        f"Kc values sourced from FAO-56 for {crop_name.lower()} cultivation. "
-        "Local climate data informs heat-stress adjustments.*"
-    )
+
+    # Slope / aspect addendum — populated whenever terrain data is present
+    # (real from Open-Elevation or bundled DEM, or fabricated default).
+    slope_pct = terrain.get('slope_percent')
+    aspect_compass = terrain.get('aspect_compass') or 'flat'
+    elevation_m = terrain.get('elevation_m')
+    terrain_source = terrain.get('source')
+    if slope_pct is not None:
+        st.markdown(
+            f"**Terrain:** elevation {elevation_m:.0f} m, slope {slope_pct:.1f}% "
+            f"facing {aspect_compass}. " + terrain_irrigation_advice(
+                slope_pct, aspect_compass,
+            )
+        )
+
+    ref_lines = [
+        f"ET0 calculated via Hargreaves-Samani for lat {lat}°N.",
+        f"Kc values sourced from FAO-56 for {crop_name.lower()} cultivation.",
+        "Local climate data informs heat-stress adjustments.",
+    ]
+    if terrain_source == "open-elevation":
+        ref_lines.append("Slope/aspect from Open-Elevation (SRTM ~30 m) via Horn 1981 kernel.")
+    elif terrain_source == "bundled-dem":
+        ref_lines.append("Slope/aspect from bundled ETOPO 2022 30 arc-sec India clip (Open-Elevation unreachable).")
+    st.caption("*References: " + " ".join(ref_lines) + "*")

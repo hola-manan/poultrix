@@ -67,6 +67,11 @@ class AgriculturalReportGenerator:
         report["components"]["irrigation_schedule"] = IrrigationScheduler.generate_schedule(
             aoi_data, ndvi_data, area_acres,
         )
+        # Attach terrain (slope/aspect/source) to the irrigation_schedule
+        # component so the UI section + PDF generator can shape the
+        # narrative around drainage/insolation without each having to dig
+        # into environmental_context separately.
+        report["components"]["irrigation_schedule"]["terrain"] = aoi_data.get("terrain", {})
 
         report["components"]["soil_management"] = SoilManagementCalculator.analyze_soil(aoi_data)
 
@@ -97,6 +102,7 @@ class AgriculturalReportGenerator:
         report["environmental_context"] = {
             "weather": aoi_data.get("weather", {}),
             "soil": aoi_data.get("soil", {}),
+            "terrain": aoi_data.get("terrain", {}),
             "growth_stage": aoi_data.get("current_growth_stage", {}),
         }
 
