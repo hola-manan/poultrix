@@ -136,9 +136,9 @@ Note: SAR ingest is **not implemented** — the pipeline currently passes a rand
 
 `colorize_raster(raster, palette, output_size=(440, 320), smooth=True, geometry=, transform=, crs=)`.
 
-- Float NDVI/NDWI array → RGBA PNG bytes.
+- Float NDVI/NDWI/RVI array → RGBA PNG bytes.
 - **NaN-aware:** pixels outside the AOI polygon arrive as NaN and are rendered fully transparent (alpha=0) so the rendered image shows the parcel shape, not a rectangle.
-- Colour ramps `NDVI_STOPS` (red → orange → yellow → green → dark green) and `NDWI_STOPS` (dark red → pink → white → light blue → dark blue) defined at module top — re-used by `ui.visuals.scale_bar` for the legend so colours match pixel-for-pixel.
+- Colour ramps `NDVI_STOPS` (red → orange → yellow → green → dark green), `NDWI_STOPS` (dark red → pink → white → light blue → dark blue), and `RVI_STOPS` (dark brown → tan → pale yellow → green → deep green; for the Sentinel-1 radar map) defined at module top — re-used by `ui.visuals.scale_bar` for the legend so colours match pixel-for-pixel.
 - Upsampled via `PILImage.NEAREST` to keep blocks crisp, then `ImageFilter.GaussianBlur(radius=1.5)` to soften the pixelation (real rasters at parcel scale are tiny — a few × a few pixels at 10 m Sentinel-2 resolution).
 - When `geometry + transform + crs` are passed, draws the AOI polygon outline in white over the colour map via `PIL.ImageDraw.polygon(outline=(255,255,255,255), width=3)`.
 - `load_raster_data(path)` reads either `.tif` (rasterio + nodata→nan) or `.npy` (numpy). Returns `(array, transform, crs)` or `None`.

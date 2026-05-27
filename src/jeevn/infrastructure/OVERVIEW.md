@@ -67,6 +67,14 @@ Three-tier resolution for slope + aspect:
 - **Returns** `{latitude, longitude, name, city, state, country, display_name, timezone, _fabricated: False}`.
 - On any failure → `pseudo_satellite.make_default_location(lat, lon)`.
 
+### [`data_sources/sar.py`](data_sources/sar.py) — Sentinel-1 RTC backscatter (real RVI)
+- **`Sentinel1Client.fetch_latest_rvi(lat, lon, days_back=10)`** — queries Microsoft Planetary Computer's STAC catalogue for the `sentinel-1-rtc` collection at the AOI point in the last `days_back` days. Picks the newest scene, signs the VV + VH asset hrefs with an MPC SAS token, reads a 5×5 pixel window at the centroid via rasterio `/vsicurl/` (HTTP range reads, no full-scene download), computes the mean linear-power backscatter for each band.
+- **`fetch_rvi_raster(geojson, aoi_id, days_back=10, output_dir="data")`** — same STAC pick, but reads the **full polygon-clipped raster** for both bands (rasterio.mask with `crop=True`), computes per-pixel RVI, masks pixels outside the polygon to NaN, and writes a compressed GeoTIFF to `<output_dir>/rvi_<aoi_id>.tif`. Returns `{rvi_raster, scene_date, scene_id, source}` or `None`. Called by [api/routes/aoi.py](../api/routes/aoi.py) during AOI submission alongside the Sentinel-2 NDVI/NDWI raster pipeline; the resulting path lands in `raster_quality.rvi_raster_available` and is served via `/aoi/{id}/maps/rvi.png`.
+- **RVI formula:** `4 · VH / (VV + VH)` in linear power units. Sentinel-1 RTC values are already in γ⁰ linear so no dB→linear conversion is needed. Clipped to `[0, 1.5]` to defang speckle outliers.
+- **Returns** `{rvi, scene_date, scene_id, source: "sentinel-1-rtc"}` (centroid sampler) or the raster path equivalent (raster builder) or `None` on any failure (STAC down, no scene in window, raster read failure, VV/VH missing).
+- Used by [application/advisory_service.py](../application/advisory_service.py) as the **top-priority** source for the `rvi` *value*; falls back to NDVI×1.08 proxy, then `pseudo_satellite.RVI`. The *raster* is independently produced and served as a field map.
+- NISAR L-band (task #4 in TASKS.md) will eventually live in this same module as an even-higher priority canopy-penetrating source — until then Sentinel-1 C-band is our only real SAR.
+
 ---
 
 ## `db/` — SQLAlchemy
@@ -114,5 +122,5 @@ Opt-in MLflow helpers. `setup_mlflow()` honours `MLFLOW_TRACKING_URI`. `log_dumm
 
 ## Tests
 
-- [tests/infrastructure/data_sources/](../../../tests/infrastructure/data_sources/) — `test_aoi.py`, `test_soil.py`, `test_terrain.py`, `test_weather.py`.
+- [tests/infrastructure/data_sources/](../../../tests/infrastructure/data_sources/) — `test_aoi.py`, `test_soil.py`, `test_terrain.py`, `test_weather.py`, `test_sentinel1_sar.py`.
 - [tests/infrastructure/db/test_models.py](../../../tests/infrastructure/db/test_models.py) — round-trip checks for AOI / IngestJob / Artifact.

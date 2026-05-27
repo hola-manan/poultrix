@@ -39,6 +39,12 @@ try:
 except ImportError:
     PREPROC_AVAILABLE = False
 
+try:
+    from jeevn.infrastructure.data_sources.sar import fetch_rvi_raster
+    SAR_AVAILABLE = True
+except ImportError:
+    SAR_AVAILABLE = False
+
 
 router = APIRouter()
 
@@ -94,6 +100,9 @@ def create_aoi(request: AOIRequest):
         ndvi_timeseries = None
         ndvi_raster = None
         ndwi_raster = None
+        rvi_raster = None
+        rvi_scene_date = None
+        rvi_scene_id = None
         parcel_confidence = None
         raster_quality = None
         anomalies = None
@@ -149,15 +158,37 @@ def create_aoi(request: AOIRequest):
             except Exception as ingest_err:
                 print(f"[INFO] Ingest failed, but continuing: {ingest_err}")
 
+        # Sentinel-1 RTC -> per-pixel RVI raster clipped to the AOI polygon.
+        # Independent of the Sentinel-2 ingest above; runs even when stub
+        # ingest produced no Sentinel-2 raster. Falls through silently on
+        # any failure (no recent scene, STAC down, rasterio missing).
+        if SAR_AVAILABLE:
+            try:
+                rvi_result = fetch_rvi_raster(request.geojson, aoi_id_str)
+                if rvi_result:
+                    rvi_raster = rvi_result.get("rvi_raster")
+                    rvi_scene_date = rvi_result.get("scene_date")
+                    rvi_scene_id = rvi_result.get("scene_id")
+            except Exception as rvi_err:
+                print(f"[INFO] Sentinel-1 RVI raster skipped: {rvi_err}")
+
         aoi_record["status"] = "processed"
         aoi_record["metadata_path"] = metadata_path
+        # Augment raster_quality so the UI knows which maps to attempt.
+        rq = dict(raster_quality or {})
+        rq["rvi_raster_available"] = bool(rvi_raster)
+        if rvi_scene_date:
+            rq["rvi_scene_date"] = rvi_scene_date
         aoi_record["report"] = {
             "ndvi_csv": ndvi_csv,
             "ndvi_timeseries": ndvi_timeseries,
             "ndvi_raster": ndvi_raster,
             "ndwi_raster": ndwi_raster,
+            "rvi_raster": rvi_raster,
+            "rvi_scene_date": rvi_scene_date,
+            "rvi_scene_id": rvi_scene_id,
             "parcel_confidence": parcel_confidence,
-            "raster_quality": raster_quality,
+            "raster_quality": rq,
             "anomalies": anomalies
         }
 
@@ -177,8 +208,11 @@ def create_aoi(request: AOIRequest):
             "ndvi_timeseries": ndvi_timeseries,
             "ndvi_raster": ndvi_raster,
             "ndwi_raster": ndwi_raster,
+            "rvi_raster": rvi_raster,
+            "rvi_scene_date": rvi_scene_date,
+            "rvi_scene_id": rvi_scene_id,
             "parcel_confidence": parcel_confidence,
-            "raster_quality": raster_quality,
+            "raster_quality": rq,
             "anomalies": anomalies
         }
 
@@ -222,7 +256,7 @@ def get_aoi_map(aoi_id: str, kind: str):
     the stub ingest path, or no STAC items), responds 404 — callers should
     render an "unavailable" message rather than substitute synthetic data.
     """
-    if kind not in ("ndvi", "ndwi"):
+    if kind not in ("ndvi", "ndwi", "rvi"):
         raise HTTPException(status_code=400, detail=f"Unknown map kind: {kind}")
 
     with AOI_STORE_LOCK:

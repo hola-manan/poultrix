@@ -27,13 +27,14 @@ AOI ingestion + report endpoints. Owns the **primary in-memory store**.
 - `GET /health` → `{"status": "ok"}`.
 - `POST /aoi`:
   - **In:** `AOIRequest` — `name`, `geojson` (FeatureCollection), optional `start_date`, `end_date`.
-  - **Steps:** mints UUID → writes to `AOI_STORE` and (best-effort) to the `aois` DB table → calls `ingestion.sentinel.ingest(...)` → if metadata produced, calls `remote_sensing.aggregate_ndvi(...)` + `remote_sensing.compute_raster(...)` + `remote_sensing.analyze_signals(...)`. All optional integrations degrade gracefully (catch + log + continue).
-  - **Out:** `AOIResponse` — `aoi_id`, `metadata_path`, `ndvi_csv`, `ndvi_timeseries`, `ndvi_raster`, `ndwi_raster`, `parcel_confidence`, `raster_quality`, `anomalies`.
+  - **Steps:** mints UUID → writes to `AOI_STORE` and (best-effort) to the `aois` DB table → calls `ingestion.sentinel.ingest(...)` → if metadata produced, calls `remote_sensing.aggregate_ndvi(...)` + `remote_sensing.compute_raster(...)` + `remote_sensing.analyze_signals(...)`. Independently calls `infrastructure.data_sources.sar.fetch_rvi_raster(...)` to produce the Sentinel-1 RVI raster clipped to the AOI polygon. All optional integrations degrade gracefully (catch + log + continue).
+  - **Out:** `AOIResponse` — `aoi_id`, `metadata_path`, `ndvi_csv`, `ndvi_timeseries`, `ndvi_raster`, `ndwi_raster`, `rvi_raster`, `rvi_scene_date`, `rvi_scene_id`, `parcel_confidence`, `raster_quality` (now includes `rvi_raster_available`), `anomalies`.
   - Increments `aoi_created_counter` / `aoi_error_counter` Prometheus counters when monitoring is available.
 - `GET /aoi/{aoi_id}/report` → `ReportResponse` (read from `AOI_STORE`; 404 if absent).
-- `GET /aoi/{aoi_id}/maps/{kind}.png` where `kind ∈ {ndvi, ndwi}`:
+- `GET /aoi/{aoi_id}/maps/{kind}.png` where `kind ∈ {ndvi, ndwi, rvi}`:
   - Loads the GeoTIFF raster path from `AOI_STORE[aoi_id]["report"][f"{kind}_raster"]`.
   - Calls `remote_sensing.visualization.load_raster_data` then `colorize_raster` to produce a PNG with transparency outside the AOI polygon.
+  - `ndvi`/`ndwi` come from the Sentinel-2 pipeline; `rvi` comes from the Sentinel-1 RTC pipeline (per-pixel `4·VH/(VV+VH)`).
   - 404 if no real raster was produced for this AOI (caller renders an "unavailable" notice rather than substituting synthetic imagery).
 
 ### [`routes/advisory.py`](routes/advisory.py)

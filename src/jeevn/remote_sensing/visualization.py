@@ -34,6 +34,16 @@ NDWI_STOPS: List[Tuple[float, Tuple[int, int, int]]] = [
     (0.5, (245, 245, 245)),  (0.7, (144, 202, 249)),
     (1.0, (13, 71, 161)),
 ]
+# RVI (Radar Vegetation Index) palette — viridis-like, low→bare-soil tan,
+# high→dense-canopy deep green. Values typically span [0, 1.0] with
+# vegetated croplands clustering around 0.4-0.8.
+RVI_STOPS: List[Tuple[float, Tuple[int, int, int]]] = [
+    (0.0, (84, 48, 5)),      # very dark brown — bare / specular
+    (0.25, (191, 129, 45)),  # tan / low backscatter
+    (0.5, (223, 194, 125)),  # pale yellow
+    (0.75, (90, 174, 97)),   # green — dense canopy
+    (1.0, (27, 94, 32)),     # very deep green
+]
 
 
 def _interp_color(stops, t: float) -> Tuple[int, int, int]:
@@ -58,6 +68,11 @@ def _normalize_for_palette(palette: str, value: np.ndarray) -> np.ndarray:
         return np.clip((value + 1.0) / 2.0, 0.0, 1.0)
     if palette == "ndwi":
         return np.clip((value + 1.0) / 2.0, 0.0, 1.0)
+    if palette == "rvi":
+        # RVI is already in [0, ~1.5]; vegetation peaks around 0.8.
+        # Map [0, 1.0] → [0, 1] and clamp the top (1.0+ is rare and
+        # typically a speckle / edge artefact).
+        return np.clip(value, 0.0, 1.0)
     return np.clip(value, 0.0, 1.0)
 
 
@@ -126,7 +141,12 @@ def colorize_raster(
     if raster is None or raster.size == 0:
         return None
 
-    stops = NDVI_STOPS if palette == "ndvi" else NDWI_STOPS
+    if palette == "ndvi":
+        stops = NDVI_STOPS
+    elif palette == "rvi":
+        stops = RVI_STOPS
+    else:  # ndwi or unknown
+        stops = NDWI_STOPS
 
     # Build RGBA: alpha=0 outside the polygon (NaN), alpha=255 inside.
     nan_mask = np.isnan(raster)

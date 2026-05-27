@@ -71,16 +71,17 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 
 **Scientific ideal:** Sentinel-1 dual-polarisation RVI = (4 × σ°VH) / (σ°VV + σ°VH). Backscatter terrain-flattened (RTC), incidence-angle normalised, multilooked to reduce speckle, and validated against destructive biomass sampling (kg dry matter / m²). For L-band (NISAR), the formulation differs but the same logic applies.
 
-**What this MVP does:** **There is no SAR ingest.** RVI is computed as `min(1.0, NDVI × 1.08)` in [src/jeevn/application/advisory_service.py](src/jeevn/application/advisory_service.py) (`_process_ndvi_data`), based on the rule-of-thumb that RVI is typically 5-10% higher than NDVI. When NDVI itself is fabricated, RVI also falls back to `pseudo_satellite.RVI = 0.65`.
+**What this MVP does:** **Real Sentinel-1 RTC.** [src/jeevn/infrastructure/data_sources/sar.py](src/jeevn/infrastructure/data_sources/sar.py) (`Sentinel1Client.fetch_latest_rvi`) queries Microsoft Planetary Computer's STAC catalogue for the `sentinel-1-rtc` collection over the AOI in the last 10 days, picks the newest scene, signs the VV + VH COG hrefs with an MPC SAS token, reads a 5×5 pixel window (~100 m × 100 m) at the centroid via rasterio `/vsicurl/`, computes the mean linear-power backscatter for each band, and applies the standard formula `4 · VH / (VV + VH)` (RTC values are already in γ⁰ linear so no dB→linear step). Clipped to `[0, 1.5]` to defang speckle outliers. RVI source priority is now Sentinel-1 → NDVI×1.08 proxy → `pseudo_satellite.RVI = 0.65`.
 
-**Gap / when it breaks:** This is a placeholder. RVI's whole point is that it's independent of NDVI (cloud-penetrating, sensitive to volumetric scattering, not chlorophyll). Using NDVI × 1.08 throws that away. The Kc adjustment and yield-reduction factors that read `rvi` are effectively reading NDVI scaled up by 8%.
+**Gap / when it breaks:** The 5×5 sample is small — for larger AOIs we average a 100 m × 100 m patch rather than the whole polygon. Speckle and edge effects can still push RVI to the clipped 1.5 ceiling for very-bright scenes. When MPC STAC is down or no scene exists within 10 days (rare — Sentinel-1A has 12-day repeat, plus Sentinel-1C for ~6-day combined), falls through to the NDVI×1.08 proxy that doesn't reflect the radar-specific scattering physics.
 
 **Code path:**
-- Data source: no real source. Derived from NDVI in [src/jeevn/application/advisory_service.py](src/jeevn/application/advisory_service.py) (`_process_ndvi_data`).
-- Transformation: same file, line ~150 (`data["rvi"] = min(1.0, ts_ndvi * 1.08)`).
-- Outstream: `ndvi_data["rvi"]` feeds [src/jeevn/domain/irrigation/scheduler.py](src/jeevn/domain/irrigation/scheduler.py) (Kc adjustment), [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) (target adjustment), [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (per-pest risk factor), [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (vigor rating).
+- Data source: [src/jeevn/infrastructure/data_sources/sar.py](src/jeevn/infrastructure/data_sources/sar.py) — MPC STAC `sentinel-1-rtc` collection.
+- Transformation: same file, `_sample_mean()` reads the COG window, RVI formula applied in `Sentinel1Client.fetch_latest_rvi`.
+- Composition: [src/jeevn/application/advisory_service.py](src/jeevn/application/advisory_service.py) (`generate_report` calls the adapter; `_process_ndvi_data` accepts a `sar_data=` kwarg and overrides any NDVI-derived RVI with the real Sentinel-1 value).
+- Outstream: `ndvi_data["rvi"]` feeds [src/jeevn/domain/irrigation/scheduler.py](src/jeevn/domain/irrigation/scheduler.py) (Kc adjustment), [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) (target adjustment), [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (per-pest risk factor), [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (vigor rating). `ndvi_data["rvi_source"]` and `ndvi_data["rvi_scene_date"]` are populated when the real source won — narratives can attribute the value.
 
-**Listed backlog item:** TASKS.md #4 — NISAR L-band ingest via `asf_search`.
+**Listed backlog item:** TASKS.md #4 — NISAR L-band ingest via `asf_search` (deferred; SME2 currently Beta with sparse delivery). When NISAR graduates, it slots into `sar.py` as a higher-priority canopy-penetrating tier alongside Sentinel-1.
 
 ---
 

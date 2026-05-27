@@ -57,22 +57,159 @@ todo-tracking an agent uses.
 
 *(known future work, not yet prioritised — move to `## Up Next` when ready)*
 
-### 4. NISAR L-band soil moisture integration
+### 9. Sentinel-3 SLSTR Land Surface Temperature (LST) adapter
 - **Status:** pending (backlog)
-- **Why:** Sentinel-1 C-band soil-moisture retrievals are degraded under
-  crop canopy; NISAR's L-band sees through it. NRSC has already published
-  100 m NISAR SM maps covering the Indo-Gangetic plain (the demo region).
-  Designed precisely for cropland.
+- **Why:** Sentinel-2 has no thermal band, so we currently have no way to
+  see crop canopy temperature — only air temperature from Open-Meteo. LST
+  is a high-value input that unlocks two things we cannot do today:
+  - **Crop water stress detection** before NDVI changes. A transpiring
+    canopy is typically 2–5 °C cooler than air; a water-stressed canopy
+    heats up. Canopy-Air Temperature (CAT) is a direct, early stress
+    signal.
+  - **Actual ET** (not potential). SEBAL / METRIC / SSEBop models invert
+    LST + albedo + meteorology into actual evapotranspiration, replacing
+    today's ET₀ × Kc estimate with a measured one.
+- **Source:** Sentinel-3 SLSTR L2 LST product. 1 km native (500 m for
+  some derived products), daily revisit (combined 3A + 3B). Free via
+  Copernicus Open Access Hub / EarthSearch STAC / Microsoft Planetary
+  Computer. License: CC BY (Copernicus).
+- **Approach (sketch — confirm at pickup time):**
+  - Adapter `src/jeevn/infrastructure/data_sources/lst.py` using
+    `pystac-client` against MPC's STAC endpoint (same pattern as our
+    Sentinel-2 ingest).
+  - Fetch the most-recent cloud-free LST scene over the AOI within the
+    last 7 days; sample at the AOI centroid + a 3×3 neighbourhood for
+    a representative value.
+  - Compute Canopy-Air Temperature stress index using the LST plus the
+    Open-Meteo daily mean air temp.
+  - Wire into the irrigation_schedule narrative (real water-stress
+    callout) and growth_yield (water-stress branch).
+  - Fabricated fallback as usual when no recent scene / clouded out.
 - **Acceptance:**
-  - [ ] New adapter using the `asf_search` Python library
-        (`pip install asf_search`).
-  - [ ] Earthdata Login configured via env vars (`EARTHDATA_USER`,
-        `EARTHDATA_PASS`); document in `.env.example`.
-  - [ ] When the latest NISAR pass over the AOI is within ~14 days, use it;
-        otherwise fall back to Open-Meteo SM (task #2).
-  - [ ] Report explicitly states the source: "Sentinel-2 capture / NISAR
-        pass YYYY-MM-DD / Open-Meteo modelled".
-- **Defers:** SAR-as-truth Open-Meteo calibration → task #6.
+  - [ ] `LSTDataFetcher.fetch_lst(lat, lon)` returns
+        `{lst_celsius, scene_date, source, cloud_pct}` or fabricated.
+  - [ ] Three-tier wiring (real LST / fabricated / no-data alert when
+        sustained cloud).
+  - [ ] Narrative branch: stress / no-stress / inconclusive.
+  - [ ] Doc updates per sync rule.
+
+### 11. CHIRPS daily 5 km precipitation (complements Open-Meteo)
+- **Status:** pending (backlog)
+- **Why:** Open-Meteo serves precipitation derived from ERA5 reanalysis
+  — a global atmospheric model that smooths localized convective
+  events. CHIRPS (Climate Hazards Group InfraRed Precipitation with
+  Station data) blends real satellite IR observations with rain-gauge
+  station data, **purpose-built for agricultural drought monitoring**
+  in low-data regions. For an Indian advisory product, CHIRPS is the
+  agronomically right source.
+- **Source:** Climate Hazards Center, UC Santa Barbara. Free, no auth.
+  HTTPS direct download from `data.chc.ucsb.edu/products/CHIRPS-2.0/`.
+  Daily preliminary at ~2 day latency, daily final at ~3 weeks
+  latency. COG format. License: public domain.
+- **Approach:**
+  - Adapter `src/jeevn/infrastructure/data_sources/precip.py` with
+    `ChirpsClient.fetch_daily_series(lat, lon, start, end)` — fetches
+    the relevant daily COGs via `/vsicurl/` (no full-globe download),
+    samples at the AOI centroid, returns per-day rainfall in mm.
+  - In `aoi.py` composer: when CHIRPS is reachable, override
+    Open-Meteo precipitation with CHIRPS values. Mark source on the
+    weather dict. Open-Meteo stays as the fallback.
+  - The advisory irrigation_schedule narrative already references
+    rainfall — just adapts to the source.
+- **Acceptance:**
+  - [ ] `fetch_daily_series` returns `[{date, rainfall_mm}, ...]` or
+        None on failure.
+  - [ ] Composer wiring + per-property source tracking.
+  - [ ] Tests: mocked /vsicurl/ reads, network-down fallback to
+        Open-Meteo, source labelling.
+  - [ ] Doc updates per sync rule.
+
+### 12. HLS (Harmonized Landsat Sentinel) gap-filler (complements Sentinel-2)
+- **Status:** pending (backlog)
+- **Why:** Our NDVI/NDWI pipeline relies on Sentinel-2; during sustained
+  cloud cover (monsoon!) the most-recent cloud-free Sentinel-2 scene
+  over a given AOI can be 2+ weeks old. HLS adds Landsat 8 + 9
+  acquisitions to the candidate pool, pre-harmonized to the Sentinel-2
+  grid + atmospheric correction. Effective revisit goes from ~5 day
+  (Sentinel-2 alone) to ~2–3 day (combined L8+L9+S2A+S2B+S2C).
+- **Complementarity with Sentinel-2:** HLS is **a gap-filler, not a
+  replacement** — Sentinel-2 at 10 m resolution beats HLS's 30 m for
+  small Indian parcels. Use HLS only when the freshest Sentinel-2
+  cloud-free scene is older than a threshold (e.g., 7 days). Return to
+  Sentinel-2 the moment one is available again.
+- **Source:** NASA LP DAAC. Collections `HLSL30` (Landsat-derived) and
+  `HLSS30` (Sentinel-2-derived, resampled to 30 m for harmony). COG
+  format. Free with Earthdata Login (`EARTHDATA_USER`/`EARTHDATA_PASS`).
+  License: NASA open data.
+- **Approach:**
+  - Extend the existing Sentinel-2 ingest path in
+    `remote_sensing/ingestion/` to query HLS when no Sentinel-2 scene
+    matches the freshness threshold.
+  - Same indices (NDVI, NDWI) computed from HLS bands — HLS is already
+    harmonized to Sentinel-2 band-equivalents so existing index code
+    needs no change.
+  - Source-tag the output so the report says e.g.
+    "NDVI from HLS Landsat-9 scene 2026-05-23 (no fresh Sentinel-2)".
+- **Acceptance:**
+  - [ ] HLS search + scene download integrated into the ingest pipeline.
+  - [ ] Selection logic: Sentinel-2 first, HLS only when stale.
+  - [ ] `field_maps` and indices carry a source label.
+  - [ ] Tests: mocked LP DAAC STAC, fallback decision under stale-S2
+        conditions.
+  - [ ] Doc updates per sync rule.
+
+### 13. Landsat 8/9 TIRS LST (finer than Sentinel-3 SLSTR — depends on #9)
+- **Status:** pending (backlog, depends on #9)
+- **Why:** Sentinel-3 SLSTR (#9) gives daily 1 km LST. Landsat 8/9 TIRS
+  gives 100 m LST every 8 days (combined L8+L9). For a 0.5 acre AOI,
+  1 km Sentinel-3 is essentially one pixel — useful as a regional
+  signal but coarse. Landsat TIRS resolves the AOI into a meaningful
+  10×10 pixel block, which is what we need for actual canopy-air
+  temperature analysis.
+- **Complementarity with #9:** Sentinel-3 = high revisit, low res;
+  Landsat = lower revisit, high res. The LST adapter chooses the
+  **finest-resolution recent scene** for each request — Landsat if
+  within ~10 days, else Sentinel-3.
+- **Source:** USGS Collection-2 Level-2 (`landsat-c2-l2`), MPC STAC.
+  Free with Earthdata Login OR via MPC (no auth needed for MPC).
+  License: USGS open data.
+- **Approach:** extend `infrastructure/data_sources/lst.py` (created
+  by #9) with a Landsat TIRS source tier. Selection rule: most-recent
+  scene wins; break ties by finest resolution.
+- **Acceptance:**
+  - [ ] LST adapter has a second tier: Landsat TIRS via MPC STAC.
+  - [ ] Selection logic + source label propagation.
+  - [ ] Tests: mocked STAC, selection ordering, fallback chain.
+  - [ ] Doc updates per sync rule.
+
+### 14. ECOSTRESS LST (finest-resolution thermal — depends on #9 and #13)
+- **Status:** pending (backlog, depends on #9 and #13)
+- **Why:** ECOSTRESS (on ISS) provides **70 m LST** — finer than
+  Landsat TIRS's 100 m, finest free LST anywhere. The instrument is
+  literally designed for vegetation water stress monitoring (ECOsystem
+  Spaceborne Thermal Radiometer Experiment on Space Station). When a
+  recent ECOSTRESS scene exists over the AOI, it's the strongest
+  signal we can get for canopy-air temperature.
+- **Complementarity with #9 / #13:** Same LST adapter pattern with a
+  third tier. ECOSTRESS revisit is irregular (ISS orbit, ~4 day
+  average but with multi-day gaps); fall through to Landsat (100 m,
+  8-day) and Sentinel-3 (1 km, daily) when no fresh ECOSTRESS scene.
+- **Source:** NASA LP DAAC. Product `ECO2LSTE` (Level-2 LST + emissivity).
+  Free with Earthdata Login. License: NASA open data.
+- **Caveat to verify at pickup time:** ECOSTRESS had instrument issues
+  (SLC failure) in 2023; acquisitions resumed but check current
+  production status before assuming continuous delivery.
+- **Approach:** extend `lst.py` with a third tier. Same selection
+  rule as #13: most-recent + finest-resolution wins. Three-tier
+  ordering: ECOSTRESS (70 m, sporadic) → Landsat TIRS (100 m, 8-day)
+  → Sentinel-3 SLSTR (1 km, daily) → fabricated fallback.
+- **Acceptance:**
+  - [ ] LST adapter has a third tier: ECOSTRESS via LP DAAC STAC.
+  - [ ] Selection logic respects "finest-resolution wins among
+        recent-enough scenes" rather than strict source priority.
+  - [ ] Tests: mocked STAC, three-way selection ordering, all-stale
+        fallback chain.
+  - [ ] Doc updates per sync rule.
 
 ### 8. Add NDWI with Gao's (1996) formulation alongside the existing index
 - **Status:** pending (backlog)
@@ -105,6 +242,28 @@ todo-tracking an agent uses.
         `PROCESSES.md` (how the moisture-stress signal is computed).
         Touch others only if behaviour visible to them changes.
 
+### 4. NISAR L-band soil moisture integration (DEFERRED)
+- **Status:** pending (backlog) — deferred 2026-05-25 after live ASF probe.
+- **Why:** Sentinel-1 C-band SM retrievals are degraded under crop canopy;
+  NISAR L-band sees through it. NASA-ISRO publish the pre-processed L3
+  **SME2** product on ASF (200 m EASE-Grid 2.0, HDF5, ~56 MB/granule, free
+  with Earthdata Login). asf_search has native `processingLevel='SME2'`
+  support, so the consumption side is a normal raster-fetch pattern.
+- **Why deferred:** Live ASF query 2026-05-25 confirmed SME2 is
+  **Beta v1 with sparse delivery**. Globally most-recent granule was
+  2026-01-20, and India has only ~20 granules total, all clustered on
+  2026-01-19/20 — no production updates in 4+ months. Building the
+  adapter today means a code path that always falls through to
+  Open-Meteo. Revisit when NASA-ISRO graduate SME2 from Beta to
+  operational.
+- **When picking up:** the research is done — three-tier design
+  (NISAR → Open-Meteo → fabricated), `asf_search` with
+  `platform='NISAR', processingLevel='SME2', intersectsWith=<wkt>`,
+  Earthdata creds via `EARTHDATA_USER`/`EARTHDATA_PASS`, cache 2 most
+  recent granules under `data/cache/nisar/`, 5 km AOI-to-edge margin,
+  HDF5 internal structure still needs first-download confirmation.
+- **Defers:** SAR-as-truth Open-Meteo calibration → task #6.
+
 ### 6. NISAR ↔ Open-Meteo SM calibration (research-grade)
 - **Status:** pending (backlog, depends on #4)
 - **Why:** Once paired NISAR + Open-Meteo SM observations accumulate per AOI,
@@ -122,6 +281,28 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 10. Sentinel-1 C-band SAR adapter (real RVI)
+- **Resolved:** 2026-05-26
+- One-liner: New `infrastructure/data_sources/sar.py` — `Sentinel1Client.fetch_latest_rvi(lat, lon)`
+  queries Microsoft Planetary Computer's STAC for the `sentinel-1-rtc` collection over the AOI
+  in the last 10 days (no auth), picks the newest scene, signs VV + VH COG hrefs with an MPC
+  SAS token, reads a 5×5 pixel window (~100 m × 100 m) at the centroid via rasterio `/vsicurl/`
+  HTTP range reads, computes `RVI = 4·VH / (VV + VH)` in linear γ⁰ units (no dB conversion —
+  RTC is already linear), clips to `[0, 1.5]`. Returns `{rvi, scene_date, scene_id, source}`
+  or None on any failure. Wired into `advisory_service._process_ndvi_data` as a new `sar_data`
+  kwarg that overrides the previous NDVI×1.08 proxy when a real scene is found.
+  `data["rvi_source"]` and `data["rvi_scene_date"]` propagate so narratives can attribute
+  the value. RVI source priority is now Sentinel-1 → NDVI proxy → fabricated default.
+  9 new tests pass (mocked STAC, mocked raster reads, no-scene/STAC-fail/missing-asset/
+  raster-fail paths, three RVI-math reference cases including the speckle-clip). Live-verified
+  end-to-end at default Ganganagar AOI: previous fabricated `rvi=0.65` → real
+  `rvi=0.509 from scene 2026-05-19`; Kc drops from ~0.71 to 0.30 reflecting actual canopy
+  vigour rather than the over-optimistic proxy; `data_quality.fabricated_fields` no longer
+  lists `rvi` (only `ndvi`, `rsm` remain). Also tested at Shimla (1.242, dense Himalayan
+  forest, plausible) and Mumbai (no recent scene → graceful fallback). NISAR L-band (task #4)
+  will live in this same module as a higher-priority canopy-penetrating source when SME2
+  graduates from Beta.
 
 ### 7. DEM-derived slope + aspect for the AOI
 - **Resolved:** 2026-05-23

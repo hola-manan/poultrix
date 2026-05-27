@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Tuple
 from datetime import datetime
 
 from jeevn.infrastructure.data_sources.aoi import fetch_aoi_data
+from jeevn.infrastructure.data_sources.sar import Sentinel1Client
 from jeevn.infrastructure import pseudo_satellite
 from jeevn.domain.irrigation import IrrigationScheduler
 from jeevn.domain.soil import SoilManagementCalculator
@@ -40,8 +41,11 @@ class AgriculturalReportGenerator:
         aoi_fabricated = aoi_data.pop("_fabricated_sources", [])
         aoi_alerts = aoi_data.pop("_alerts", [])
 
+        # Sentinel-1 RTC backscatter -> real RVI. Falls through to NDVI-derived
+        # proxy (then fabricated default) when no recent scene or STAC down.
+        sar_data = Sentinel1Client.fetch_latest_rvi(lat, lon)
         ndvi_data, ndvi_fabricated = AgriculturalReportGenerator._process_ndvi_data(
-            ndvi_timeseries, ndvi_raster_data,
+            ndvi_timeseries, ndvi_raster_data, sar_data=sar_data,
         )
 
         report: Dict[str, Any] = {
@@ -130,6 +134,7 @@ class AgriculturalReportGenerator:
     def _process_ndvi_data(
         ndvi_timeseries: list = None,
         ndvi_raster_data: Dict[str, Any] = None,
+        sar_data: Dict[str, Any] = None,
     ) -> Tuple[Dict[str, Any], List[str]]:
         """Return (data, fabricated_keys).
 
@@ -137,6 +142,11 @@ class AgriculturalReportGenerator:
         pseudo-satellite default and gets overwritten when a real measurement
         is available. Keys still using the default are returned in
         `fabricated_keys` so the report can flag them.
+
+        Source priority for `rvi`:
+          1. `sar_data['rvi']` — real Sentinel-1 backscatter measurement.
+          2. `ndvi * 1.08` — proxy derived from Sentinel-2 optical NDVI.
+          3. `pseudo_satellite.RVI` — fabricated default.
         """
         data: Dict[str, Any] = {
             "ndvi": pseudo_satellite.NDVI,
@@ -150,7 +160,9 @@ class AgriculturalReportGenerator:
             ts_ndvi = latest.get("ndvi")
             if ts_ndvi is not None:
                 data["ndvi"] = ts_ndvi
-                # RVI is typically 5–10% higher than NDVI
+                # RVI proxy from NDVI (typically 5–10% higher). This is still
+                # an estimate, not a radar measurement; will be overwritten
+                # below if `sar_data` provides a real Sentinel-1 RVI.
                 data["rvi"] = min(1.0, ts_ndvi * 1.08)
                 fabricated.discard("ndvi")
                 fabricated.discard("rvi")
@@ -162,6 +174,13 @@ class AgriculturalReportGenerator:
                 fabricated.discard("ndvi")
             if "parcel_confidence" in ndvi_raster_data:
                 data["parcel_confidence"] = ndvi_raster_data["parcel_confidence"]
+
+        # Sentinel-1 RTC overrides NDVI-derived proxy when available.
+        if sar_data and sar_data.get("rvi") is not None:
+            data["rvi"] = sar_data["rvi"]
+            data["rvi_source"] = sar_data.get("source")
+            data["rvi_scene_date"] = sar_data.get("scene_date")
+            fabricated.discard("rvi")
 
         return data, sorted(fabricated)
 

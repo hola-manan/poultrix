@@ -28,8 +28,8 @@ Two tabs:
 
 **Tab 2 — "View Report"** — mirrors the PDF page-for-page:
 1. Header banner (location / area / satellite-visit date / crop) + a red-banner block for `data_quality.alerts` (e.g. "AOI in built-up land") + a yellow-banner block listing `data_quality.fabricated_fields`.
-2. [`sections/field_maps.py`](sections/field_maps.py) — real Sentinel-2 NDVI + NDWI rasters fetched as PNG bytes from `/aoi/{id}/maps/{kind}.png`. Falls back to an explicit "raster unavailable" notice rather than substituting synthetic imagery.
-3. [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) — 7-day schedule table + calculation note + terrain-aware narrative + source-aware reference line.
+2. [`sections/field_maps.py`](sections/field_maps.py) — real Sentinel-2 NDVI + NDWI rasters AND Sentinel-1 RVI raster, each fetched as PNG bytes from `/aoi/{id}/maps/{kind}.png` (kinds: `ndvi`, `ndwi`, `rvi`). Three-up column layout. Falls back to an explicit "raster unavailable" notice rather than substituting synthetic imagery.
+3. [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) — 7-day schedule table + calculation note + **three metric chips (ET₀ / Kc / LST** — LST is a placeholder until task #9 Sentinel-3 SLSTR lands**)** + terrain-aware narrative + source-aware reference line.
 4. [`sections/soil_growth.py`](sections/soil_growth.py) — paired soil/yield metric tiles + details + limiting-factors expander.
 5. [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) — risk-coloured threat table (red/yellow/green) + pest narrative + weed narrative.
 6. [`sections/fertilizer.py`](sections/fertilizer.py) — N/P/K/S/Zn table with colour-coded status column + recommended-products expander + numbered details.
@@ -55,7 +55,7 @@ Then "Generate PDF Report":
 ### [`visuals.py`](visuals.py)
 The only thing produced client-side: a small horizontal colour-scale legend.
 
-- `scale_bar(palette, label_lo, label_hi, w=220, h=22) -> BytesIO | None` — uses the canonical `NDVI_STOPS` / `NDWI_STOPS` colour stops imported from [../remote_sensing/visualization.py](../remote_sensing/visualization.py) so the legend colours match the server-rendered raster pixel-for-pixel.
+- `scale_bar(palette, label_lo, label_hi, w=220, h=22) -> BytesIO | None` — uses the canonical `NDVI_STOPS` / `NDWI_STOPS` / `RVI_STOPS` colour stops imported from [../remote_sensing/visualization.py](../remote_sensing/visualization.py) so the legend colours match the server-rendered raster pixel-for-pixel.
 
 The procedural synthetic field maps that used to live here were removed — when a real raster is unavailable, the field-maps section says so explicitly rather than fabricating one.
 
@@ -65,7 +65,7 @@ One module per PDF page; each exports a `render(...)` function that takes the re
 | File | Mirrors PDF page | Key widgets |
 |------|------------------|-------------|
 | [`sections/field_maps.py`](sections/field_maps.py) | Page 1 | `st.image` for each raster (or `st.info` fallback), Pillow scale-bar legends. |
-| [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) | Page 2 | pandas DataFrame, calculation-note `st.info` box, terrain narrative. |
+| [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) | Page 2 | pandas DataFrame, calculation-note `st.info` box, ET₀/Kc/LST metric chips, terrain narrative. |
 | [`sections/soil_growth.py`](sections/soil_growth.py) | Page 3 | Side-by-side `st.metric` tiles (left=soil, right=yield), texture composition caption, limiting-factors expander. |
 | [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) | Page 4 | Colour-coded threat table (Pandas Styler), pest + weed narrative blocks. |
 | [`sections/fertilizer.py`](sections/fertilizer.py) | Page 5 | Nutrient table with colour-coded `Status` column, recommended-products expander. |

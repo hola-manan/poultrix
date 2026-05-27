@@ -17,7 +17,7 @@ from typing import Optional
 # Reuse the canonical colour stops from the server-side renderer so the legend
 # colours match the colorized maps pixel-for-pixel.
 from jeevn.remote_sensing.visualization import (
-    NDVI_STOPS, NDWI_STOPS, _interp_color, PIL_AVAILABLE,
+    NDVI_STOPS, NDWI_STOPS, RVI_STOPS, _interp_color, PIL_AVAILABLE,
 )
 
 try:
@@ -30,13 +30,18 @@ def scale_bar(palette: str, label_lo: str, label_hi: str,
               w: int = 220, h: int = 22) -> Optional[io.BytesIO]:
     """Horizontal colour-scale legend with low/high text labels.
 
-    `palette` is 'ndvi' or 'ndwi'. Returns BytesIO PNG, or None if PIL is
-    unavailable.
+    `palette` is 'ndvi', 'ndwi', or 'rvi'. Returns BytesIO PNG, or None
+    if PIL is unavailable.
     """
     if not PIL_AVAILABLE:
         return None
     try:
-        stops = NDVI_STOPS if palette == 'ndvi' else NDWI_STOPS
+        if palette == 'ndvi':
+            stops = NDVI_STOPS
+        elif palette == 'rvi':
+            stops = RVI_STOPS
+        else:
+            stops = NDWI_STOPS
         bar_h = max(10, h - 10)
         img = PILImage.new('RGB', (w, h), (255, 255, 255))
         draw = ImageDraw.Draw(img)

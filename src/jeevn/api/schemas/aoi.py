@@ -48,6 +48,9 @@ class AOIResponse(BaseModel):
     ndvi_timeseries: Optional[list] = None
     ndvi_raster: Optional[str] = None
     ndwi_raster: Optional[str] = None
+    rvi_raster: Optional[str] = None
+    rvi_scene_date: Optional[str] = None
+    rvi_scene_id: Optional[str] = None
     parcel_confidence: Optional[Dict[str, Any]] = None
     raster_quality: Optional[Dict[str, Any]] = None
     anomalies: Optional[Dict[str, Any]] = None

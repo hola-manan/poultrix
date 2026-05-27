@@ -32,7 +32,8 @@ The `AgriculturalReportGenerator` class. Single static `generate_report(...)` me
 
 - **Steps:**
   1. `fetch_aoi_data(...)` returns a single dict containing `location` / `weather` / `soil` / `terrain` / `crop` / `current_growth_stage` / `accumulated_gdd` plus `_fabricated_sources` and `_alerts`.
-  2. `_process_ndvi_data(...)` builds `{ndvi, rvi, rsm}` from the timeseries / raster, starting from `pseudo_satellite` defaults and overwriting with real values where available. Returns the list of fields still using defaults.
+  1a. `Sentinel1Client.fetch_latest_rvi(lat, lon)` is called for the AOI centroid; returns `{rvi, scene_date, scene_id, source}` from the latest Sentinel-1 RTC scene, or `None` if MPC STAC is down / no scene within ~10 days.
+  2. `_process_ndvi_data(ndvi_timeseries, ndvi_raster_data, sar_data=...)` builds `{ndvi, rvi, rsm}` from the timeseries / raster / Sentinel-1, starting from `pseudo_satellite` defaults and overwriting with real values where available. Returns the list of fields still using defaults. **RVI source priority:** Sentinel-1 backscatter measurement → NDVI×1.08 proxy → `pseudo_satellite.RVI`. When Sentinel-1 returns a real value, `data["rvi_source"]` and `data["rvi_scene_date"]` are populated so downstream consumers can attribute the value.
   3. Calls each domain calculator with `(aoi_data, ndvi_data, area_acres)` and slots the result into `report["components"][...]`.
      - `IrrigationScheduler.generate_schedule` (+ attaches `terrain` so the narrative can shape irrigation advice by slope/aspect).
      - `SoilManagementCalculator.analyze_soil`.

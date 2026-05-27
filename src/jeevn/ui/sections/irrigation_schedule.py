@@ -31,6 +31,23 @@ def render(components: dict, *, crop_name: str, location: str, lat: float,
         f"**Best Time:** {best_time} | **Units:** mm"
     )
 
+    # ── Metric chips: ET0 / Kc / LST ──────────────────────────────────────
+    # Kc comes from `irrigation_schedule.kc` (FAO-56 lookup × RVI adjustment);
+    # LST is reserved for Sentinel-3 SLSTR (backlog #9) — placeholder until
+    # the LST adapter lands so the panel layout is stable.
+    lst_value = components.get('lst_celsius')
+    m1, m2, m3 = st.columns(3)
+    m1.metric("ET₀ (mm/day)", f"{et0:.1f}")
+    m2.metric("Kc (FAO-56 × RVI)", f"{kc:.2f}")
+    if lst_value is not None:
+        m3.metric("LST (°C)", f"{lst_value:.1f}")
+    else:
+        m3.metric(
+            "LST (°C)", "—",
+            delta="Pending Sentinel-3 SLSTR (task #9)",
+            delta_color="off",
+        )
+
     if daily:
         rows = []
         for d in daily:

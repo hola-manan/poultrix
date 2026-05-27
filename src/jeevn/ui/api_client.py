@@ -69,8 +69,8 @@ class JeevnAPIClient:
 
     def fetch_aoi_map(self, aoi_id: str, kind: str) -> Optional[bytes]:
         """GET /aoi/{aoi_id}/maps/{kind}.png — fetch the real colorized
-        NDVI or NDWI raster as PNG bytes. Returns None if the server has no
-        real raster for this AOI (HTTP 404) or the request fails.
+        NDVI / NDWI / RVI raster as PNG bytes. Returns None if the server
+        has no real raster for this AOI (HTTP 404) or the request fails.
         """
         try:
             response = requests.get(
