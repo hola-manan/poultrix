@@ -14,21 +14,29 @@ class IrrigationCalculator:
                                         solar_radiation: float, lat: float,
                                         day_of_year: int, wind_speed: float = 2) -> float:
         """
-        Reference evapotranspiration (ET0) using Hargreaves-Samani.
+        Reference evapotranspiration (ET0) using Hargreaves-Samani (1985).
         Returns ET0 in mm/day.
-        """
-        if solar_radiation <= 0:
-            Ra = IrrigationCalculator._calculate_ra(lat, day_of_year)
-        else:
-            Ra = solar_radiation / 0.408
 
+        Hargreaves-Samani is a temperature-and-extraterrestrial-radiation
+        method: `ET0 = 0.0023 · Ra · sqrt(Tmax - Tmin) · (Tmean + 17.8)`,
+        where `Ra` is *extraterrestrial* (top-of-atmosphere) radiation
+        expressed in mm/day equivalent — NOT measured surface shortwave.
+        `_calculate_ra` returns Ra in MJ/m²/day, so we convert with the
+        FAO-56 factor (1 mm = 2.45 MJ/m² → ×0.408). `solar_radiation` and
+        `wind_speed` are accepted for signature compatibility but unused.
+        """
+        ra_mj = IrrigationCalculator._calculate_ra(lat, day_of_year)
+        ra_mm = ra_mj * 0.408  # MJ/m²/day → mm/day equivalent
         temp_diff = max(0.1, temp_max - temp_min)
-        et0 = 0.0023 * Ra * math.sqrt(temp_diff) * (temp_mean + 17.8)
+        et0 = 0.0023 * ra_mm * math.sqrt(temp_diff) * (temp_mean + 17.8)
         return max(0, et0)
 
     @staticmethod
     def _calculate_ra(lat: float, day_of_year: int) -> float:
-        """Extraterrestrial radiation (Ra) in mm/day."""
+        """Extraterrestrial radiation (Ra) in MJ/m²/day (FAO-56 eq. 21).
+        Convert to mm/day equivalent with ×0.408 before use in
+        Hargreaves-Samani.
+        """
         lat_rad = math.radians(lat)
         b = 2 * math.pi * (day_of_year - 1) / 365.0
 

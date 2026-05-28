@@ -374,11 +374,11 @@ slope_pct = 100 × √(dz/dx² + dz/dy²)
 
 **Scientific ideal:** Tipping-bucket or weighing-pluviometer rain gauge (Texas Electronics, OTT Pluvio) at the site, with windshield correction (gauges undercatch in wind). Accuracy: ±2% above 10 mm/day. Radar-corrected gauge networks (NEXRAD-style) are the regional-scale gold standard.
 
-**What this MVP does:** Open-Meteo `precipitation_sum`. Model-based, so ±20-40% vs gauge in convective events.
+**What this MVP does:** Open-Meteo `precipitation_sum`. Model-based, so ±20-40% vs gauge in convective events. Two streams: the **archive** API (`fetch_weather`, historical, for context) and the **forecast** API (`fetch_forecast`, forward 7-day, with `precipitation_probability_max`) — the irrigation schedule uses the forecast stream so it can subtract *future* rain from *future* ETc.
 
 **Code path:**
-- Data source: same as D.1.
-- Outstream: `daily.rainfall`; subtracted from ETc to compute net irrigation requirement.
+- Data source: `fetch_weather` (archive) for `weather.daily.rainfall`; `fetch_forecast` (forecast) for `forecast.daily.rainfall` + `rain_probability`.
+- Outstream: forecast rainfall is subtracted (× 0.8 effective fraction) from each forecast day's ETc in E.4, and shown per-row in the schedule.
 
 ---
 
@@ -427,16 +427,16 @@ Requires: net radiation (Rn), soil heat flux (G, often ≈ 0 daily), wind at 2 m
 
 **What this MVP does:** **Hargreaves-Samani** (1985), a temperature-only simplification:
 ```
-ET0 = 0.0023 × Ra × √(Tmax − Tmin) × (Tmean + 17.8)
+ET0 = 0.0023 × Ra_mm × √(Tmax − Tmin) × (Tmean + 17.8)
 ```
-Where Ra is extraterrestrial radiation from latitude + day-of-year. Used when humidity / wind / RH aren't reliably available.
+Where `Ra_mm = _calculate_ra(lat, day_of_year) × 0.408` — extraterrestrial radiation computed from latitude + day-of-year (FAO-56 eq. 21 gives Ra in MJ/m²/day; ×0.408 converts to mm/day equivalent). It does **not** use measured surface radiation — that's the whole point of HS. Realistic hot semi-arid output ~5-7 mm/day.
 
-**Gap / when it breaks:** Hargreaves-Samani is FAO-56's recommended fallback when full meteorology is missing. Typical bias: under-predicts ET0 by 5-15% in humid conditions, over-predicts in arid windy conditions. We have wind data but don't use it. Daily mean error: ±0.5 mm/day vs PM. Acceptable for scheduling, not for water-rights accounting.
+**Gap / when it breaks:** Hargreaves-Samani is FAO-56's recommended fallback when full meteorology is missing. Typical bias: under-predicts ET0 by 5-15% in humid conditions, over-predicts in arid windy conditions. We have wind data but don't use it. Daily mean error: ±0.5 mm/day vs PM. Acceptable for scheduling, not for water-rights accounting. *(Historical bug, fixed 2026-05: the code briefly set `Ra = solar_radiation / 0.408` — inverting the MJ→mm factor AND substituting surface for extraterrestrial radiation — which inflated ET0 to ~23 mm/day.)*
 
 **Code path:**
-- Data source: D.1 + D.3 (temperature + radiation, plus latitude from `aoi_data["location"]`).
+- Data source: per-forecast-day temperature from `aoi_data["forecast"]` (E.4), plus latitude from `aoi_data["location"]`.
 - Transformation: [src/jeevn/domain/irrigation/et0.py](src/jeevn/domain/irrigation/et0.py) (`calculate_et0_hargreaves_samani`, `_calculate_ra`).
-- Outstream: `et0_mm_per_day` → ETc → daily schedule; surfaces in the irrigation section header.
+- Outstream: per-day ET0 → ETc → daily schedule; the 7-day average surfaces as `et0_mm_per_day` in the irrigation section header.
 
 ---
 
@@ -480,14 +480,14 @@ With RVI itself being NDVI × 1.08 (see A.4), this *is* the "Kc-from-NDVI" idea 
 
 **Scientific ideal:** Real-time soil-moisture-triggered irrigation: continuous TDR probes at root depth, irrigate when SM drops below a refill threshold (typically field capacity − 50% of plant-available water). Drip systems with pressure-compensating emitters + flow-rate meters. Variable rate via prescription maps from NDVI/EM38 soil-EC surveys.
 
-**What this MVP does:** Alternate-day drip — pick every other day; if `net_irrigation = max(0, ETc − rainfall/1000) > 0`, schedule the day with that mm. Always recommends drip + 05:00-08:00 best time. Doesn't read soil moisture into the schedule (it's reported separately but doesn't gate the irrigation events).
+**What this MVP does:** **Rain-aware alternate-day drip.** For each of the next 7 forecast days: compute that day's ETc (E.1 × E.2) and subtract that day's *effective* forecast rain (`0.8 × forecast_rain_mm`, an USDA-SCS-style effective-rainfall fraction). `net = max(0, ETc − effective_rain)`. Irrigate on even days only when `net > 0.05 mm` — so a rainy day that already covers ETc gets no irrigation. Each row shows the real forecast rainfall (mm) + rain probability (%). Always recommends drip + 05:00-08:00 best time. Doesn't read soil moisture into the schedule (reported separately, doesn't gate events).
 
-**Gap / when it breaks:** No SM trigger means irrigations can be scheduled even when the soil is at field capacity. The "alternate days" pattern is a heuristic — real schedules vary by emitter flow rate, plot size, and the previous irrigation's depth.
+**Gap / when it breaks:** No SM trigger means irrigations can be scheduled even when the soil is already at field capacity from a prior event. The "alternate days" pattern is a heuristic — real schedules vary by emitter flow rate, plot size, and the previous irrigation's depth. The 0.8 effective-rain fraction is a flat approximation (real effective rainfall depends on intensity, soil intake, and antecedent moisture). *(Historical bug, fixed 2026-05: rain was divided by 1000 before subtraction — silently ignored — and net irrigation multiplied by 1000, producing ~7000 mm/day drip.)*
 
 **Code path:**
-- Data source: ETc + rainfall from D.2.
+- Data source: per-day ETc (E.1/E.2) + per-day forecast rain (D.2) from `aoi_data["forecast"]`.
 - Transformation: [src/jeevn/domain/irrigation/scheduler.py](src/jeevn/domain/irrigation/scheduler.py) (`generate_schedule`).
-- Outstream: `components.irrigation_schedule.daily_schedule[]` — 7 rows of drip/basin/sprinkler mm + total_water_mm + irrigation_days. PDF page 2 + Streamlit irrigation section.
+- Outstream: `components.irrigation_schedule.daily_schedule[]` — 7 rows of drip/basin/sprinkler mm + real rainfall + rain% + total_water_mm + irrigation_days + forecast_rainfall_mm. PDF page 2 + Streamlit irrigation section.
 
 ---
 

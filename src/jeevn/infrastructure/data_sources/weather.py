@@ -118,3 +118,61 @@ class WeatherDataFetcher:
         except Exception as e:
             print(f"[WARN] Weather fetch failed: {e}")
             return pseudo_satellite.make_default_weather(lat, lon)
+
+    @staticmethod
+    def fetch_forecast(lat: float, lon: float, days: int = 7) -> Dict[str, Any]:
+        """Fetch a forward `days`-day daily forecast from Open-Meteo's
+        forecast API (distinct from the historical archive used by
+        `fetch_weather`). Needed for rain-aware irrigation scheduling — the
+        archive API only covers past dates, so a forward schedule cannot
+        subtract future rain without this.
+
+        Returns:
+            {
+              "daily": {dates[], temp_max[], temp_min[], temp_mean[],
+                        rainfall[] (mm), rain_probability[] (% 0-100),
+                        solar_radiation[], wind_speed[]},
+              "_fabricated": False,
+            }
+        On failure → `pseudo_satellite.make_default_forecast(lat, lon, days)`.
+        """
+        try:
+            url = "https://api.open-meteo.com/v1/forecast"
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "daily": ",".join([
+                    "temperature_2m_max",
+                    "temperature_2m_min",
+                    "temperature_2m_mean",
+                    "precipitation_sum",
+                    "precipitation_probability_max",
+                    "shortwave_radiation_sum",
+                    "windspeed_10m_max",
+                ]),
+                "forecast_days": days,
+                "timezone": "auto",
+                "temperature_unit": "celsius",
+                "windspeed_unit": "kmh",
+                "precipitation_unit": "mm",
+            }
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            daily_data = response.json().get("daily", {})
+
+            return {
+                "daily": {
+                    "dates": daily_data.get("time", []),
+                    "temp_max": daily_data.get("temperature_2m_max", []),
+                    "temp_min": daily_data.get("temperature_2m_min", []),
+                    "temp_mean": daily_data.get("temperature_2m_mean", []),
+                    "rainfall": daily_data.get("precipitation_sum", []),
+                    "rain_probability": daily_data.get("precipitation_probability_max", []),
+                    "solar_radiation": daily_data.get("shortwave_radiation_sum", []),
+                    "wind_speed": daily_data.get("windspeed_10m_max", []),
+                },
+                "_fabricated": False,
+            }
+        except Exception as e:
+            print(f"[WARN] Weather forecast fetch failed: {e}")
+            return pseudo_satellite.make_default_forecast(lat, lon, days)

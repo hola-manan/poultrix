@@ -22,7 +22,7 @@ infrastructure/
 
 - **Constants:** `NDVI`, `RVI`, `RSM`, `SOIL_MOISTURE`, `DEFAULT_AREA_ACRES`, `DEFAULT_CROP_NAME = "apple"`, `DEFAULT_LATITUDE = 29.92`, `DEFAULT_LONGITUDE = 73.97` (~10 km east of Sri Ganganagar, picked because it has full SoilGrids coverage and is real cropland), `DEFAULT_DAYS_SINCE_SOWING = 60`, `DEFAULT_TIMEZONE = "Asia/Kolkata"`.
 - **Templates:** `DEFAULT_SOIL_PROPERTIES`, `GANGANAGAR_SOIL_PROPERTIES`, `DEFAULT_WEATHER_DAILY` (7-day semi-arid May baseline), `DEFAULT_LOCATION`, `DEFAULT_TERRAIN` (flat plain).
-- **Builders:** `make_default_weather(lat, lon)`, `make_default_soil(lat, lon, location_name)`, `make_default_location(lat, lon)`, `make_default_terrain()` — each returns the dict in the same shape its real adapter does, with a `_fabricated` (or `_fabricated_fields`) flag set.
+- **Builders:** `make_default_weather(lat, lon)`, `make_default_forecast(lat, lon, days=7)`, `make_default_soil(lat, lon, location_name)`, `make_default_location(lat, lon)`, `make_default_terrain()` — each returns the dict in the same shape its real adapter does, with a `_fabricated` (or `_fabricated_fields`) flag set.
 - **`FABRICATED_FIELD_DESCRIPTIONS`** — human-readable explanations keyed by field name; used by `describe(field)` to build the bulleted "what was fabricated and why" list in the UI.
 
 ---
@@ -46,6 +46,7 @@ Special behaviour:
 - **Date clamping:** start/end are clamped to "today" if the caller passed a future date (sowing date plus 6-month season), avoiding 400 Bad Request.
 - **Output shape:** `{location: {lat, lon, timezone}, daily: {dates, temp_max, temp_min, temp_mean, rainfall, solar_radiation, wind_speed, soil_moisture_0_to_7cm_mean}, _fabricated: False}`.
 - On any failure → `pseudo_satellite.make_default_weather(lat, lon)`.
+- **`WeatherDataFetcher.fetch_forecast(lat, lon, days=7)`** — forward forecast from the **forecast** API (`api.open-meteo.com/v1/forecast`, distinct from the historical archive). Daily `temp_{max,min,mean}`, `precipitation_sum` (mm), `precipitation_probability_max` (%), radiation, wind. Used by the irrigation scheduler to subtract per-day forecast rain from per-day ETc — the archive is backward-looking and can't gate a forward schedule. On failure → `pseudo_satellite.make_default_forecast(lat, lon, days)` (zero-rain semi-arid baseline, `_fabricated=True` → surfaces as `forecast` in the report's fabricated list).
 
 ### [`data_sources/soil.py`](data_sources/soil.py) — ISRIC SoilGrids + bundled salinity raster
 - **`SoilGridsClient.fetch(lat, lon)`** — `GET https://rest.isric.org/soilgrids/v2.0/properties/query` for `phh2o, soc, bdod, sand, silt, clay, cec` at depths `0-5/5-15/15-30 cm`. Depth-weighted mean (5/10/15 cm), then applies SoilGrids' `d_factor` to convert mapped → target units, then SOC g/kg → mass %. Returns a dict with `_no_data_in_land_mask: True` when the centroid lies in SoilGrids' built-up / water / rock exclusion zone (HTTP 200 + all-null).

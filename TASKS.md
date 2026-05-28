@@ -57,6 +57,92 @@ todo-tracking an agent uses.
 
 *(known future work, not yet prioritised — move to `## Up Next` when ready)*
 
+### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
+- **Status:** pending (backlog)
+- **Why:** The pest/disease + weed risk model uses humidity as a major
+  input, but humidity is currently **estimated** by a formula
+  (`40 + rainfall×2 + (30 − temp)×2`) in
+  `domain/pest_disease_weed/assessment.py` — there is no real RH feed.
+  Open-Meteo already exposes hourly + daily relative humidity at no extra
+  cost (same API we use for temperature). This is the cheapest, highest-
+  leverage fabrication to retire and a prerequisite for any real
+  disease-infection modelling (task #16).
+- **What we want to achieve:**
+  - [ ] Weather adapter fetches real RH (hourly `relative_humidity_2m`,
+        daily max/min/mean) alongside the existing variables.
+  - [ ] The pest/disease/weed model consumes the real value; the
+        formula proxy becomes the fallback only.
+  - [ ] `environmental_conditions.humidity_estimate` is relabelled to
+        reflect that it's now measured, and flagged fabricated only when
+        Open-Meteo RH is unavailable.
+  - [ ] Doc updates per sync rule (PROCESSES H.1, infra OVERVIEW).
+
+### 16. Pest/disease forecasting — Layer 1 (weather-driven risk models)
+- **Status:** pending (backlog, epic; benefits from #15 + #9 LST)
+- **Why:** Today's pest/disease section is a static-lookup *susceptibility
+  heuristic*, not a forecast — it scores "conditions resemble what this
+  pest likes" from a 5-row table. The goal is to move it toward genuine
+  **weather-driven forecasting**: predict *when* risk is high before any
+  symptoms, the way operational systems (NEWA, RIMpro, USPest.org) do.
+- **What we want to achieve** (not how):
+  - [ ] Insect risk driven by **degree-day accumulation** from sowing /
+        a biofix, so the model tracks each pest's actual life-cycle timing.
+  - [ ] Disease risk driven by **leaf-wetness duration × temperature**
+        infection logic (Mills-curve style), not a humidity heuristic.
+  - [ ] Output framed as a forward risk window ("egg-hatch / infection
+        period expected on date X"), not just a static percentage.
+  - [ ] Per-crop/per-pest parameters sourced from published models rather
+        than hand-tuned constants.
+- **Depends on:** real RH (#15); ideally real LST (#9) for canopy
+  temperature; degree-days already computed in the AOI composer.
+
+### 17. Pest/disease — Layer 2 (ground-truth observation inputs)
+- **Status:** pending (backlog, epic)
+- **Why:** Any forecast model (#16) drifts without ground truth. This layer
+  is about **letting real observations into the system** — the biofix and
+  population pressure that anchor the models, and the confirmation that a
+  predicted risk is actually present.
+- **What we want to achieve:**
+  - [ ] A way for a user/agronomist to log **pheromone-trap counts** and
+        **scouting observations** (pest, count, date, location) against an AOI.
+  - [ ] The first sustained trap catch sets the **biofix** that anchors the
+        degree-day models in #16.
+  - [ ] Observed pressure overrides / calibrates the modelled risk, and the
+        report distinguishes "modelled risk" from "confirmed presence".
+  - [ ] Economic-threshold-based spray/no-spray guidance where data allows.
+
+### 18. Pest/disease — Layer 3 (remote-sensing symptom detection)
+- **Status:** pending (backlog, epic)
+- **Why:** Locate *where* a problem is and *how severe*, ideally before the
+  eye sees it — complementing the "when" from #16 and the "confirmed" from
+  #17. We already pull Sentinel-2; this is about turning imagery into
+  spatial stress/symptom signals.
+- **What we want to achieve:**
+  - [ ] Spatial stress maps from the indices we already compute (red-edge /
+        NDRE, thermal once #9 lands) highlighting anomalous patches within
+        the AOI.
+  - [ ] Where feasible, image-based symptom classification (e.g. a
+        photo-upload disease classifier) as an optional input.
+  - [ ] Severity quantification (affected-area %) rather than a single
+        whole-field score.
+  - [ ] Honest attribution — flag that a remote stress signal is
+        non-specific until confirmed by #17.
+
+### 19. Pest/disease — Layer 4 (sensor fusion + integrated forecast)
+- **Status:** pending (backlog, epic; depends on #16-#18)
+- **Why:** The end state — tie the other three layers into one
+  continuously-updated, farm-specific, ideally spatial forecast, fed by
+  automated inputs rather than one-off API calls.
+- **What we want to achieve:**
+  - [ ] Ingest in-field sensor streams (leaf wetness, canopy RH/temp) when
+        available, feeding the infection models with local microclimate
+        instead of a distant station.
+  - [ ] Fuse weather + observations (#17) + remote sensing (#18) into a
+        single risk forecast, spatial where the data supports it.
+  - [ ] Continuously update as new data arrives, with model
+        validation/retraining hooks.
+  - [ ] Drive targeted (variable-rate) management recommendations.
+
 ### 9. Sentinel-3 SLSTR Land Surface Temperature (LST) adapter
 - **Status:** pending (backlog)
 - **Why:** Sentinel-2 has no thermal band, so we currently have no way to
@@ -281,6 +367,28 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### Bugfix — irrigation schedule: ET0 units + rain-aware forecast scheduling
+- **Resolved:** 2026-05-26
+- One-liner: Fixed three intertwined bugs that made the irrigation schedule
+  physically impossible (7018 mm/day drip, 28,075 mm total) and ignored rain.
+  (1) `et0.py` — `Ra = solar_radiation / 0.408` inverted the MJ→mm factor AND
+  substituted surface for extraterrestrial radiation, inflating ET0 ~6× (23→
+  ~6 mm/day). Now always computes Ra from `_calculate_ra` (FAO-56 eq. 21,
+  MJ/m²/day) × 0.408. (2) `scheduler.py` — dropped the `/1000` on rainfall
+  (which silently ignored it) and the `×1000` on irrigation (which inflated
+  drip 1000×); everything is now mm end-to-end. (3) Rewrote the scheduler to
+  be **rain-aware + forward-looking**: new `WeatherDataFetcher.fetch_forecast`
+  (Open-Meteo forecast API — 7-day daily precip + `precipitation_probability_max`
+  + temps, distinct from the historical archive) feeds per-day ETc minus
+  `0.8 × forecast_rain`; rows show real forecast rainfall + rain% instead of
+  hardcoded "0 mm"/"0%". Wired forecast through the AOI composer + a
+  `pseudo_satellite.make_default_forecast` fallback (surfaces as `forecast`
+  in `data_quality.fabricated_fields`). Live-verified at Ganganagar: ET0 6.69,
+  drip 3-4 mm/day, total 13.4 mm over 4 events, real forecast rain/rain% per
+  row. 8 new tests in `tests/domain/irrigation/test_scheduler.py` (ET0 sanity,
+  unit regression, heavy-rain-zeroes-irrigation, light-rain-reduces,
+  per-row rain display, no-forecast fallback). 130 tests pass.
 
 ### 10. Sentinel-1 C-band SAR adapter (real RVI)
 - **Resolved:** 2026-05-26

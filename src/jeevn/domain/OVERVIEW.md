@@ -43,9 +43,9 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 `IrrigationCalculator` — the FAO-56 / Hargreaves-Samani math.
 
 - **`calculate_et0_hargreaves_samani(temp_mean, temp_max, temp_min, solar_radiation, lat, day_of_year, wind_speed)`** → ET0 in mm/day.
-  - If `solar_radiation > 0`, derives `Ra = solar_radiation / 0.408`; otherwise calls `_calculate_ra(lat, day_of_year)` (full solar-geometry calculation).
-  - `ET0 = 0.0023 × Ra × √(Tmax − Tmin) × (Tmean + 17.8)`.
-- **`_calculate_ra(lat, day_of_year)`** — extraterrestrial radiation; standard FAO formula with seasonal correction `b = 2π(day-1)/365`.
+  - Always computes `Ra` from `_calculate_ra(lat, day_of_year)` (MJ/m²/day) and converts to mm/day equivalent via `×0.408`. `solar_radiation`/`wind_speed` are accepted for signature compatibility but unused — Hargreaves-Samani is a temperature + extraterrestrial-radiation method, not a measured-radiation one.
+  - `ET0 = 0.0023 × Ra_mm × √(Tmax − Tmin) × (Tmean + 17.8)`. Realistic hot semi-arid output ~5-7 mm/day. *(Earlier `Ra = solar_radiation / 0.408` inverted the conversion and inflated ET0 ~6×.)*
+- **`_calculate_ra(lat, day_of_year)`** — extraterrestrial radiation in **MJ/m²/day** (FAO-56 eq. 21); standard formula with seasonal correction `b = 2π(day-1)/365`. Convert with ×0.408 before use in Hargreaves.
 - **`calculate_kc(crop_name, growth_stage, rvi=0.5)`** — base Kc from FAO-56 lookup × `(0.8 + rvi × 0.4)` RVI adjustment. Crops covered: apple, wheat, default.
 - **`calculate_etc(et0, kc)`** = `et0 × kc`.
 - **`calculate_soil_water_deficit(current_soil_moisture, field_capacity=0.25, wilting_point=0.12, depletion_fraction=0.5)`** — returns deficit (mm per 300 mm depth) once moisture drops below the readily-available threshold.
@@ -53,11 +53,11 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ### [`irrigation/scheduler.py`](irrigation/scheduler.py)
 `IrrigationScheduler.generate_schedule(aoi_data, ndvi_data, area_acres, forecast_days=7)`.
 
-- Reads the latest day from `aoi_data["weather"]["daily"]` (temp_mean/max/min, solar_radiation, rainfall, wind_speed).
-- Calls `IrrigationCalculator` to get ET0 → Kc → ETc.
-- `net_irrigation = max(0, etc - rainfall/1000)`.
-- Builds a 7-day schedule with alternate-day drip (every other day, only when irrigation_requirement > 0).
-- **Returns** `{et0_mm_per_day, kc, etc_mm_per_day, rainfall_mm, net_irrigation_mm, total_water_mm, irrigation_days, best_time: "05:00-08:00", daily_schedule: [...], irrigation_method_notes}`.
+- **Rain-aware + forward-looking.** Reads `aoi_data["forecast"]["daily"]` (the 7-day Open-Meteo *forecast* fetched by the AOI composer — the historical archive can't gate a forward schedule). Per forecast day: compute that day's ET0 (from forecast temps) → ETc (× Kc, Kc from RVI-adjusted FAO-56) → `net = max(0, ETc − 0.8 × forecast_rain_mm)`. The 0.8 is an effective-rainfall fraction (USDA-SCS approximation).
+- Alternate-day drip: irrigate on even days only when that day's `net > 0.05 mm` (rain may have already covered ETc). Each row shows the **actual forecast** rainfall (mm) + rain probability (%) — not hardcoded zeros.
+- Falls back to default temps / zero rain (degraded, never crashes) when the forecast is absent.
+- All quantities are in **mm**; there is no metre conversion. *(An earlier version divided rain by 1000 — silently ignoring it — and multiplied irrigation by 1000, producing drip of thousands of mm/day.)*
+- **Returns** `{et0_mm_per_day (avg), kc, etc_mm_per_day (avg), forecast_rainfall_mm (7-day sum), total_water_mm, irrigation_days, best_time: "05:00-08:00", daily_schedule: [{date, drip_mm, basin_mm, sprinkler_mm, rainfall, rain_percent, evapotransp}], irrigation_method_notes}`.
 
 ---
 

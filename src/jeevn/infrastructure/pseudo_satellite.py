@@ -146,6 +146,33 @@ def make_default_soil(lat: float, lon: float,
     }
 
 
+def make_default_forecast(lat: float, lon: float, days: int = 7) -> Dict[str, Any]:
+    """Build a fully-fabricated forward forecast (semi-arid May baseline,
+    zero rain) used when Open-Meteo's forecast API is unreachable. Caller
+    propagates `_fabricated` so the report flags the rain columns.
+    """
+    base = DEFAULT_WEATHER_DAILY
+    dates = [(datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
+             for i in range(days)]
+
+    def _cycle(series: List, n: int) -> List:
+        return [series[i % len(series)] for i in range(n)]
+
+    return {
+        "daily": {
+            "dates": dates,
+            "temp_max": _cycle(base["temp_max"], days),
+            "temp_min": _cycle(base["temp_min"], days),
+            "temp_mean": _cycle(base["temp_mean"], days),
+            "rainfall": [0.0] * days,
+            "rain_probability": [0.0] * days,
+            "solar_radiation": _cycle(base["solar_radiation"], days),
+            "wind_speed": _cycle(base["wind_speed"], days),
+        },
+        "_fabricated": True,
+    }
+
+
 def make_default_location(lat: float, lon: float) -> Dict[str, Any]:
     """Build a default location info dict. Caller marks fabricated."""
     return {
@@ -173,6 +200,7 @@ FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "rvi": "Radar Vegetation Index (derived from a fabricated NDVI)",
     "rsm": "Radar Soil Moisture (no satellite reading available)",
     "weather": "Weather data (Open-Meteo unreachable; using semi-arid May defaults)",
+    "forecast": "7-day weather forecast (Open-Meteo forecast API unreachable; irrigation rain-adjustment using zero-rain defaults)",
     "soil": "Soil properties (SoilGrids unreachable; using region template)",
     "location": "Reverse-geocoded location (Nominatim unreachable)",
     "days_since_sowing": "Crop age (no sowing date provided; assumed 60 days)",

@@ -50,6 +50,13 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     if weather_fabricated:
         fabricated.append("weather")
 
+    # Forward 7-day forecast (distinct from the historical archive above) —
+    # the irrigation scheduler subtracts per-day forecast rain from per-day
+    # ETc. Archive data is backward-looking and can't gate a forward schedule.
+    forecast = WeatherDataFetcher.fetch_forecast(lat, lon, days=7)
+    if forecast.pop("_fabricated", False):
+        fabricated.append("forecast")
+
     soil = SoilDataFetcher.fetch_soil_data(lat, lon, location_name)
     # Soil now uses per-property fabrication tracking. Each property that is
     # still fabricated contributes a `soil.<property>` entry to the report's
@@ -131,6 +138,7 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     return {
         "location": location,
         "weather": weather,
+        "forecast": forecast,
         "soil": soil,
         "terrain": terrain,
         "crop": crop_data,
