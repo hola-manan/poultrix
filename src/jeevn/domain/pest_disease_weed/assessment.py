@@ -123,6 +123,8 @@ class PestDiseaseWeedAssessor:
                 "humidity_estimate": round(humidity_estimate, 0),
                 "rvi": round(rvi, 2),
                 "rsm": round(rsm, 2),
+                "rsm_source": ndvi_data.get("rsm_source") or "fabricated",
+                "rsm_pass_date": ndvi_data.get("rsm_pass_date"),
                 "growth_stage": growth_stage
             },
             "pests_diseases": [],

@@ -31,7 +31,7 @@ Two tabs:
 2. [`sections/field_maps.py`](sections/field_maps.py) — real Sentinel-2 NDVI + NDWI rasters AND Sentinel-1 RVI raster, each fetched as PNG bytes from `/aoi/{id}/maps/{kind}.png` (kinds: `ndvi`, `ndwi`, `rvi`). Three-up column layout. Falls back to an explicit "raster unavailable" notice rather than substituting synthetic imagery.
 3. [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) — 7-day schedule table + calculation note + **three metric chips (ET₀ / Kc / LST** — LST is a placeholder until task #9 Sentinel-3 SLSTR lands**)** + terrain-aware narrative + source-aware reference line.
 4. [`sections/soil_growth.py`](sections/soil_growth.py) — paired soil/yield metric tiles + details + limiting-factors expander.
-5. [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) — risk-coloured threat table (red/yellow/green) + pest narrative + weed narrative.
+5. [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) — risk-coloured threat table (red/yellow/green) + **environmental chips (Temperature / Humidity / RSM with source attribution)** + pest narrative + weed narrative + source-aware references caption (RSM source: NISAR L-band / Open-Meteo / fabricated).
 6. [`sections/fertilizer.py`](sections/fertilizer.py) — N/P/K/S/Zn table with colour-coded status column + recommended-products expander + numbered details.
 
 Then "Generate PDF Report":
@@ -67,7 +67,7 @@ One module per PDF page; each exports a `render(...)` function that takes the re
 | [`sections/field_maps.py`](sections/field_maps.py) | Page 1 | `st.image` for each raster (or `st.info` fallback), Pillow scale-bar legends. |
 | [`sections/irrigation_schedule.py`](sections/irrigation_schedule.py) | Page 2 | pandas DataFrame, calculation-note `st.info` box, ET₀/Kc/LST metric chips, terrain narrative. |
 | [`sections/soil_growth.py`](sections/soil_growth.py) | Page 3 | Side-by-side `st.metric` tiles (left=soil, right=yield), texture composition caption, limiting-factors expander. |
-| [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) | Page 4 | Colour-coded threat table (Pandas Styler), pest + weed narrative blocks. |
+| [`sections/pest_disease_weed.py`](sections/pest_disease_weed.py) | Page 4 | Colour-coded threat table (Pandas Styler), Temperature/Humidity/RSM metric chips, pest + weed narratives, source-aware references. |
 | [`sections/fertilizer.py`](sections/fertilizer.py) | Page 5 | Nutrient table with colour-coded `Status` column, recommended-products expander. |
 
 ### `pdf/generator.py`

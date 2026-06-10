@@ -1,0 +1,1721 @@
+{
+  "project": "jeevn",
+  "mode": "both",
+  "num_cases": 7,
+  "num_runs": 7,
+  "notes": [
+    "Code-scan produced 4 hypotheses.",
+    "Generated checks suite (6 invariants, 3 metamorphic)."
+  ],
+  "findings": [
+    {
+      "title": "[code-review] Satellite visit date is hardcoded to the report generation date",
+      "severity": "high",
+      "category": "code-suspicion",
+      "intent_excerpt": "The `satellite_visit` field in the `aoi_info` dictionary is populated using `datetime.now().strftime(\"%d %b %Y\")`. This is incorrect; the visit date should correspond to the acquisition date of the satellite imagery used (e.g., from `sar_data['scene_date']` or the date of the latest `ndvi_timeseries` entry), not the date the report was generated.",
+      "observed": "The report will always show the current date as the 'satellite visit date', regardless of when the actual satellite data was captured. This provides false information about data freshness and provenance.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator.generate_report:81",
+        "probe_hint": "Run the report on two different days using the exact same input data, including a fixed `sar_data` dictionary with a `scene_date` from last month. The `satellite_visit` field in the output will change to the current date each time, instead of remaining static and matching the `scene_date`."
+      },
+      "repro_case_id": "",
+      "check_id": "code_scan.hardcoded_satellite_visit_date",
+      "confidence": 0.5,
+      "id": "find_e5d51e45"
+    },
+    {
+      "title": "[code-review] Inconsistent NDVI sources used for point-in-time vs. trajectory analysis",
+      "severity": "high",
+      "category": "code-suspicion",
+      "intent_excerpt": "When both `ndvi_timeseries` and `ndvi_raster_data` are provided, `_process_ndvi_data` first sets `data['ndvi']` from the timeseries, but then overwrites it with the value from the raster data. However, the `growth_trajectory` analysis in the main function is still performed on the original `ndvi_timeseries`. This can lead to a report where the current NDVI value (used for irrigation, yield, etc.) is inconsistent with the trend line.",
+      "observed": "The report's `growth_trajectory` might show a declining trend ending at NDVI=0.7, while the `growth_yield` projection and other current-state calculations are based on a current NDVI of 0.5 (from the raster), creating a confusing and contradictory narrative for the user.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator._process_ndvi_data:201",
+        "probe_hint": "Call `generate_report` with an `ndvi_timeseries` where the last point is `{'ndvi': 0.7}` and an `ndvi_raster_data` dictionary where `{'ndvi_mean': 0.5}`. The resulting report will have a trajectory ending at 0.7 but other calculations will be based on 0.5."
+      },
+      "repro_case_id": "",
+      "check_id": "code_scan.inconsistent_ndvi_source",
+      "confidence": 0.5,
+      "id": "find_698fd4ea"
+    },
+    {
+      "title": "[code-review] RVI derived from NDVI is not flagged as a proxy",
+      "severity": "medium",
+      "category": "code-suspicion",
+      "intent_excerpt": "When a real NDVI value is available but no real SAR data is, the code calculates a proxy RVI (`ts_ndvi * 1.08`) and then removes 'rvi' from the `fabricated` set. This is misleading. While derived from real data, this RVI is an estimate, not a direct radar measurement. According to the stated intent, such non-direct values should be disclosed.",
+      "observed": "The final report will show an RVI value, but the `data_quality.fabricated_fields` list will not contain 'rvi'. This misleads the user into thinking they have a real radar measurement when they only have an optical-derived proxy, potentially giving them false confidence in the value.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator._process_ndvi_data:192",
+        "probe_hint": "Call `generate_report` with a valid `ndvi_timeseries` (containing a real NDVI value) but with `sar_data=None`. The resulting report's `data_quality.fabricated_fields` will be missing 'rvi', and the `details` will not explain its proxy origin."
+      },
+      "repro_case_id": "",
+      "check_id": "code_scan.rvi_proxy_not_flagged",
+      "confidence": 0.5,
+      "id": "find_54914d31"
+    },
+    {
+      "title": "[code-review] Convenience wrapper function drops the `ndvi_raster_data` input",
+      "severity": "medium",
+      "category": "code-suspicion",
+      "intent_excerpt": "The wrapper function `generate_agricultural_report_from_aoi` does not have `ndvi_raster_data` in its signature and therefore does not pass it to the underlying `AgriculturalReportGenerator.generate_report` method. This makes it impossible for any code using this convenience entrypoint to provide raster data.",
+      "observed": "The `field_maps` component of the report will always be empty/null when using the `generate_agricultural_report_from_aoi` function, even if raster data is available and intended to be used. The point-in-time NDVI value will also never be sourced from a raster when using this entrypoint.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:generate_agricultural_report_from_aoi",
+        "probe_hint": "Attempt to generate a report with field maps using the `generate_agricultural_report_from_aoi` function. It's impossible because the function signature doesn't accept `ndvi_raster_data`. If the signature were modified to accept it, the data would still be dropped as it's not passed to the internal call."
+      },
+      "repro_case_id": "",
+      "check_id": "code_scan.dropped_raster_data_input",
+      "confidence": 0.5,
+      "id": "find_d0aade00"
+    },
+    {
+      "title": "Soil properties in 'soil_management' must be consistent with 'environmental_context'.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Soil properties in 'soil_management' must be consistent with 'environmental_context'.",
+      "observed": "Soil properties are inconsistent between soil_management and environmental_context.",
+      "evidence": {
+        "mismatches": [
+          {
+            "field": "ph",
+            "soil_management": 8.2,
+            "environmental_context": 8.18
+          }
+        ]
+      },
+      "repro_case_id": "case_846400aa",
+      "check_id": "internal_consistency_soil",
+      "confidence": 1.0,
+      "id": "find_6755f0e9"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 25.0,
+            "expected_total": 77550.0,
+            "observed_total": 77562.5
+          }
+        ]
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_f16274b5"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 8.0,
+            "expected_total": 24816.0,
+            "observed_total": 24820.0
+          }
+        ]
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_7fc9e5bb"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 50.2,
+            "expected_total": 155720.40000000002,
+            "observed_total": 155745.5
+          }
+        ]
+      },
+      "repro_case_id": "case_b2c6b015",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_fa3f1b49"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 25.0,
+            "expected_total": 77550.0,
+            "observed_total": 77562.5
+          }
+        ]
+      },
+      "repro_case_id": "case_097243b0",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_a92289da"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 50.2,
+            "expected_total": 155720.40000000002,
+            "observed_total": 155745.5
+          }
+        ]
+      },
+      "repro_case_id": "case_3743adcf",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_8c4cd81c"
+    },
+    {
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 120.0,
+            "expected_total": 372240.0,
+            "observed_total": 372300.0
+          }
+        ]
+      },
+      "repro_case_id": "case_48e9d052",
+      "check_id": "yield_calculation",
+      "confidence": 1.0,
+      "id": "find_54a3302e"
+    },
+    {
+      "title": "Changing the sowing date should result in a different current growth stage.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Changing the sowing date should result in a different current growth stage.",
+      "observed": "Changing the sowing date had no effect on the calculated current_growth_stage.",
+      "evidence": {
+        "base_sowing_date": "2023-11-10",
+        "variant_sowing_date": "2024-02-15",
+        "observed_stage": "tillering",
+        "variant_case_id": "case_cae40ccb"
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "sowing_date_impact",
+      "confidence": 1.0,
+      "id": "find_0505df1c"
+    },
+    {
+      "title": "Changing the sowing date should result in a different current growth stage.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Changing the sowing date should result in a different current growth stage.",
+      "observed": "Changing the sowing date had no effect on the calculated current_growth_stage.",
+      "evidence": {
+        "base_sowing_date": "2024-06-20",
+        "variant_sowing_date": "2023-10-01",
+        "observed_stage": "tillering",
+        "variant_case_id": "case_aae211b1"
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "sowing_date_impact",
+      "confidence": 1.0,
+      "id": "find_f7cd9378"
+    },
+    {
+      "title": "Changing the sowing date should result in a different current growth stage.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Changing the sowing date should result in a different current growth stage.",
+      "observed": "Changing the sowing date had no effect on the calculated current_growth_stage.",
+      "evidence": {
+        "base_sowing_date": "2023-06-15",
+        "variant_sowing_date": "2023-10-01",
+        "observed_stage": "tillering",
+        "variant_case_id": "case_93b10903"
+      },
+      "repro_case_id": "case_b2c6b015",
+      "check_id": "sowing_date_impact",
+      "confidence": 1.0,
+      "id": "find_79a7f730"
+    },
+    {
+      "title": "Incorrect Date Range in Fabricated Weather Data",
+      "severity": "critical",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The 'make_default_weather' function returned fabricated weather data for dates in 2026 (e.g., '2026-05-31'), which is significantly in the future and does not align with the input 'sowing_date' of '2023-11-10' or any reasonable current period for an agricultural report.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "input_sowing_date": "2023-11-10",
+        "output_weather_dates": [
+          "2026-05-31",
+          "2026-06-01",
+          "2026-06-02",
+          "2026-06-03",
+          "2026-06-04",
+          "2026-06-05",
+          "2026-06-06"
+        ]
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.spot_check",
+      "confidence": 1.0,
+      "id": "find_6e008323"
+    },
+    {
+      "title": "Fabricated Data Not Fully Declared",
+      "severity": "critical",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `growth_yield.vegetation_vigor` and `growth_yield.vegetation_vigor_score` fields appear to be fabricated or derived from fabricated data, but are not listed in `data_quality.fabricated_fields`.",
+      "evidence": {
+        "growth_yield.vegetation_vigor": "Very Poor",
+        "growth_yield.vegetation_vigor_score": 13.5,
+        "data_quality.fabricated_fields": [
+          "ndvi",
+          "rsm",
+          "soil.bulk_density",
+          "soil.cec",
+          "soil.clay_percent",
+          "soil.infiltration_rate",
+          "soil.organic_carbon_percent",
+          "soil.ph",
+          "soil.sand_percent",
+          "soil.silt_percent",
+          "soil.soil_moisture_current",
+          "soil.texture",
+          "soil.water_holding_capacity",
+          "weather"
+        ]
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_178754be"
+    },
+    {
+      "title": "Inconsistent Growth Stage Assessment",
+      "severity": "critical",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `growth_yield.current_growth_stage` is 'tillering', but the `growth_yield.growth_stage_assessment` states 'Late by 879 days (accelerated development)'. This is a contradiction. A crop sown on 2023-11-10 cannot be 'late by 879 days' and simultaneously be in an 'accelerated development' state, especially when the report date is 2026-06-06.",
+      "evidence": {
+        "input_sowing_date": "2023-11-10",
+        "report_date": "06/06/2026",
+        "growth_yield.current_growth_stage": "tillering",
+        "growth_yield.growth_stage_assessment": "Late by 879 days (accelerated development)"
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_892066c0"
+    },
+    {
+      "title": "NDVI Analysis Not Using Input Data",
+      "severity": "critical",
+      "category": "input_propagation",
+      "intent_excerpt": "",
+      "observed": "The `growth_trajectory` section reports `current_ndvi: 0`, `ndvi_range: 0.00 to 0.00`, and `mean_ndvi: 0.0`, despite valid `ndvi_timeseries` being provided in the input. This indicates the input NDVI data was not used for this section.",
+      "evidence": {
+        "input_ndvi_timeseries": [
+          {
+            "date": "2023-11-25",
+            "mean_ndvi": 0.21
+          },
+          {
+            "date": "2023-12-20",
+            "mean_ndvi": 0.45
+          },
+          {
+            "date": "2024-01-14",
+            "mean_ndvi": 0.82
+          },
+          {
+            "date": "2024-02-05",
+            "mean_ndvi": 0.79
+          }
+        ],
+        "growth_trajectory.current_ndvi": 0,
+        "growth_trajectory.ndvi_range": "0.00 to 0.00",
+        "growth_trajectory.mean_ndvi": 0.0
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_8ccf51c5"
+    },
+    {
+      "title": "Inconsistent Harvest Status and Growth Stage",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The report states `growth_yield.harvest_status` as 'ready' while `growth_yield.current_growth_stage` is 'tillering'. These two states are mutually exclusive for a crop like Wheat. A crop in the tillering stage is far from being ready for harvest.",
+      "evidence": {
+        "growth_yield.harvest_status": "ready",
+        "growth_yield.current_growth_stage": "tillering"
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_675c4790"
+    },
+    {
+      "title": "Inconsistent Growth Stage Duration",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `environmental_context.growth_stage.days_in_stage` is reported as 939 days. This is an extremely long duration for a single growth stage (tillering) and is inconsistent with the typical lifecycle of Wheat.",
+      "evidence": {
+        "environmental_context.growth_stage.stage": "tillering",
+        "environmental_context.growth_stage.days_in_stage": 939
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_7d4b1634"
+    },
+    {
+      "title": "Inconsistent Salinity Assessment",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.salinity` is reported as 'high', but the `environmental_context.soil.properties.salinity_label` is 'slightly saline'. These two assessments contradict each other.",
+      "evidence": {
+        "soil_management.salinity": "high",
+        "environmental_context.soil.properties.salinity_label": "slightly saline"
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_c0a0ee88"
+    },
+    {
+      "title": "Inconsistent Soil Organic Carbon Status",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.organic_carbon_status` states 'critically low (current: 0.15%, min required: 0.8%)', but the `fertilizer_management.nutrient_requirements` does not list Carbon as a nutrient with a gap, nor does it explicitly link the low organic carbon to nutrient deficiencies in its 'limiting_factors'. While organic carbon is not a direct nutrient, its critical level should influence nutrient availability and be reflected more directly in fertilizer recommendations or limiting factors.",
+      "evidence": {
+        "soil_management.organic_carbon_percent": 0.15,
+        "soil_management.organic_carbon_status": "critically low (current: 0.15%, min required: 0.8%)",
+        "fertilizer_management.nutrient_requirements": {
+          "N": {
+            "current_kg_per_acre": 13.65,
+            "target_kg_per_acre": "36.4-47.3",
+            "gap_kg_per_acre": 33.7,
+            "status": "critical"
+          },
+          "P": {
+            "current_kg_per_acre": 11.0,
+            "target_kg_per_acre": "18.2-23.7",
+            "gap_kg_per_acre": 12.67,
+            "status": "critical"
+          },
+          "K": {
+            "current_kg_per_acre": 82.0,
+            "target_kg_per_acre": "18.2-23.7",
+            "gap_kg_per_acre": 0,
+            "status": "adequate"
+          },
+          "S": {
+            "current_kg_per_acre": 7.0,
+            "target_kg_per_acre": "9.7-14.7",
+            "gap_kg_per_acre": 7.74,
+            "status": "critical"
+          },
+          "Zn": {
+            "current_kg_per_acre": 0.8,
+            "target_kg_per_acre": "4.4-9.4",
+            "gap_kg_per_acre": 8.57,
+            "status": "critical"
+          }
+        },
+        "growth_yield.limiting_factors": [
+          {
+            "factor": "Nutrient deficiency",
+            "impact": "15.0% yield reduction"
+          }
+        ]
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 0.8,
+      "id": "find_d526981d"
+    },
+    {
+      "title": "Inconsistent Fertilizer Recommendation for DAP",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `fertilizer_management.nutrient_requirements.P.gap_kg_per_acre` is 12.67 kg/acre. DAP (Diammonium Phosphate) typically contains 46% P2O5, which is about 20% P. To supply 12.67 kg of P, approximately 63.35 kg of DAP would be needed (12.67 / 0.20). The recommended quantity of DAP is 63.35 kg/acre, which matches the P gap. However, DAP also contains 18% Nitrogen. This means 63.35 kg of DAP would supply approximately 11.4 kg of N (63.35 * 0.18). This N contribution from DAP is not accounted for in the Urea recommendations, which are based on 50% of the N requirement each, potentially leading to over-application of N.",
+      "evidence": {
+        "fertilizer_management.nutrient_requirements.P.gap_kg_per_acre": 12.67,
+        "fertilizer_management.nutrient_requirements.N.gap_kg_per_acre": 33.7,
+        "fertilizer_management.fertilizer_schedule.recommended_products": [
+          {
+            "product": "Urea (46% N) - Base application",
+            "quantity_kg_acre": 36.63,
+            "notes": "50% of N requirement"
+          },
+          {
+            "product": "Urea (46% N) - Top dressing",
+            "quantity_kg_acre": 36.63,
+            "notes": "50% of N requirement; critical for grain fill"
+          },
+          {
+            "product": "DAP - Diammonium Phosphate",
+            "quantity_kg_acre": 63.35,
+            "notes": "Ensures available P at seedling stage"
+          }
+        ]
+      },
+      "repro_case_id": "case_76208838",
+      "check_id": "llm.final_judge",
+      "confidence": 0.9,
+      "id": "find_1cc00079"
+    },
+    {
+      "title": "Fabricated weather data not explicitly declared in output",
+      "severity": "critical",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `jeevn.infrastructure.pseudo_satellite.make_default_weather` step returned fabricated data, indicated by `_fabricated: true`, but the output structure does not include a `_fabricated_fields` key to explicitly list which fields were fabricated, as required by the intent's 'Data Provenance and Fabrication Disclosure' rule.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "result": {
+          "location": {
+            "latitude": 22.5726,
+            "longitude": 88.3639,
+            "timezone": "Asia/Kolkata"
+          },
+          "daily": {
+            "dates": [
+              "2026-05-31",
+              "2026-06-01",
+              "2026-06-02",
+              "2026-06-03",
+              "2026-06-04",
+              "2026-06-05",
+              "2026-06-06"
+            ],
+            "temp_max": [
+              35,
+              36,
+              37,
+              36,
+              35,
+              34,
+              33
+            ],
+            "temp_min": [
+              25,
+              26,
+              27,
+              26,
+              25,
+              24,
+              23
+            ],
+            "temp_mean": [
+              30,
+              31,
+              32,
+              31,
+              30,
+              29,
+              28
+            ],
+            "rainfall": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              5,
+              0
+            ],
+            "solar_radiation": [
+              25,
+              26,
+              27,
+              26,
+              25,
+              22,
+              24
+            ],
+            "wind_speed": [
+              8,
+              8,
+              9,
+              8,
+              7,
+              6,
+              7
+            ]
+          },
+          "_fabricated": true
+        }
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.spot_check",
+      "confidence": 1.0,
+      "id": "find_192c1c6e"
+    },
+    {
+      "title": "Fabricated weather data dates are in the future",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `jeevn.infrastructure.pseudo_satellite.make_default_weather` step returned fabricated weather data with dates starting from '2026-05-31'. The input `sowing_date` is '2024-06-20', implying the report is for the current or recent past season. Future weather data is not relevant for current agronomic calculations.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "input_sowing_date": "2024-06-20",
+        "fabricated_weather_dates": [
+          "2026-05-31",
+          "2026-06-01",
+          "2026-06-02",
+          "2026-06-03",
+          "2026-06-04",
+          "2026-06-05",
+          "2026-06-06"
+        ]
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.spot_check",
+      "confidence": 1.0,
+      "id": "find_9e1b613d"
+    },
+    {
+      "title": "Incorrect Sowing Date Propagation and Growth Stage Calculation",
+      "severity": "critical",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `sowing_date` (2024-06-20) is not correctly used to calculate 'days since sowing' for growth stage determination. The report states 'current_growth_stage': 'tillering' and 'growth_stage_assessment': 'Late by 656 days (accelerated development)'. This is a contradiction and indicates a miscalculation. From 2024-06-20 to 2026-06-06 (report_date), there are approximately 716 days, not 656. Furthermore, 'tillering' is an early growth stage, and being 'Late by 656 days' for tillering is nonsensical. The 'days_in_stage' in 'environmental_context.growth_stage' is also 716, which matches the total days since sowing, but this should not be the 'days_in_stage' for tillering.",
+      "evidence": {
+        "input_sowing_date": "2024-06-20",
+        "report_date": "06/06/2026",
+        "growth_yield.current_growth_stage": "tillering",
+        "growth_yield.growth_stage_assessment": "Late by 656 days (accelerated development)",
+        "environmental_context.growth_stage.days_in_stage": 716
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_5a7e50ee"
+    },
+    {
+      "title": "Inconsistent Salinity Status Reporting",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.salinity` is reported as 'moderate', but `environmental_context.soil.properties.salinity_label` is 'non-saline'. These two values contradict each other.",
+      "evidence": {
+        "soil_management.salinity": "moderate",
+        "environmental_context.soil.properties.salinity_label": "non-saline"
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_1f4ddb66"
+    },
+    {
+      "title": "NDVI Data Not Used for Growth Trajectory Analysis",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `ndvi_timeseries` input data is provided, but the `growth_trajectory` section reports 'current_ndvi': 0, 'ndvi_range': '0.00 to 0.00', and 'mean_ndvi': 0.0, with 'data_points': 2. This indicates that the provided NDVI data (0.18 and 0.33) was not used for the analysis, despite the intent to generate the `growth_yield.monitoring` section using this data.",
+      "evidence": {
+        "input_ndvi_timeseries": [
+          {
+            "date": "2024-07-05",
+            "mean_ndvi": 0.18
+          },
+          {
+            "date": "2024-07-20",
+            "mean_ndvi": 0.33
+          }
+        ],
+        "growth_trajectory.current_ndvi": 0,
+        "growth_trajectory.ndvi_range": "0.00 to 0.00",
+        "growth_trajectory.mean_ndvi": 0.0,
+        "growth_trajectory.data_points": 2
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 1.0,
+      "id": "find_f213ac53"
+    },
+    {
+      "title": "Fabrication Disclosure Inconsistency for Weather Data",
+      "severity": "medium",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `data_quality.fabricated_fields` lists 'weather' as fabricated, with the detail 'Weather data (Open-Meteo unreachable; using semi-arid May defaults)'. However, the `environmental_context.weather.daily` section contains specific daily weather data (temperatures, rainfall, solar radiation, wind speed) for dates from 2026-05-31 to 2026-06-06, which contradicts the idea of using 'semi-arid May defaults'. If it's fabricated, it should either be explicitly stated as such in the data itself or the data should reflect the 'defaults' more clearly.",
+      "evidence": {
+        "data_quality.fabricated_fields": [
+          "weather"
+        ],
+        "data_quality.details.weather": "Weather data (Open-Meteo unreachable; using semi-arid May defaults)",
+        "environmental_context.weather.daily": {
+          "dates": [
+            "2026-05-31",
+            "2026-06-01",
+            "2026-06-02",
+            "2026-06-03",
+            "2026-06-04",
+            "2026-06-05",
+            "2026-06-06"
+          ],
+          "temp_max": [
+            35,
+            36,
+            37,
+            36,
+            35,
+            34,
+            33
+          ],
+          "temp_min": [
+            25,
+            26,
+            27,
+            26,
+            25,
+            24,
+            23
+          ],
+          "temp_mean": [
+            30,
+            31,
+            32,
+            31,
+            30,
+            29,
+            28
+          ],
+          "rainfall": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            5,
+            0
+          ],
+          "solar_radiation": [
+            25,
+            26,
+            27,
+            26,
+            25,
+            22,
+            24
+          ],
+          "wind_speed": [
+            8,
+            8,
+            9,
+            8,
+            7,
+            6,
+            7
+          ]
+        }
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 0.9,
+      "id": "find_5ce2381a"
+    },
+    {
+      "title": "Inconsistent KC Value for Growth Stage",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `irrigation_schedule.kc` is 0.51, while `environmental_context.growth_stage.kc` is 0.5. While these are close, they should ideally be consistent if they refer to the same crop coefficient for the current growth stage.",
+      "evidence": {
+        "irrigation_schedule.kc": 0.51,
+        "environmental_context.growth_stage.kc": 0.5
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 0.8,
+      "id": "find_1688dbbd"
+    },
+    {
+      "title": "Inconsistent Location Name in AOI Info",
+      "severity": "low",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The input `location_name` is 'Kolkata, West Bengal, India', but `aoi_info.location` is 'Baranagar'. While Baranagar is a locality within Kolkata, the report should ideally reflect the input location name or provide a clear reason for the change.",
+      "evidence": {
+        "input_location_name": "Kolkata, West Bengal, India",
+        "aoi_info.location": "Baranagar"
+      },
+      "repro_case_id": "case_f315aff5",
+      "check_id": "llm.final_judge",
+      "confidence": 0.7,
+      "id": "find_5f837acc"
+    }
+  ],
+  "grouped": [
+    {
+      "check_id": "llm.spot_check",
+      "title": "Incorrect Date Range in Fabricated Weather Data",
+      "severity": "critical",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The 'make_default_weather' function returned fabricated weather data for dates in 2026 (e.g., '2026-05-31'), which is significantly in the future and does not align with the input 'sowing_date' of '2023-11-10' or any reasonable current period for an agricultural report.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "input_sowing_date": "2023-11-10",
+        "output_weather_dates": [
+          "2026-05-31",
+          "2026-06-01",
+          "2026-06-02",
+          "2026-06-03",
+          "2026-06-04",
+          "2026-06-05",
+          "2026-06-06"
+        ]
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Fabricated Data Not Fully Declared",
+      "severity": "critical",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `growth_yield.vegetation_vigor` and `growth_yield.vegetation_vigor_score` fields appear to be fabricated or derived from fabricated data, but are not listed in `data_quality.fabricated_fields`.",
+      "evidence": {
+        "growth_yield.vegetation_vigor": "Very Poor",
+        "growth_yield.vegetation_vigor_score": 13.5,
+        "data_quality.fabricated_fields": [
+          "ndvi",
+          "rsm",
+          "soil.bulk_density",
+          "soil.cec",
+          "soil.clay_percent",
+          "soil.infiltration_rate",
+          "soil.organic_carbon_percent",
+          "soil.ph",
+          "soil.sand_percent",
+          "soil.silt_percent",
+          "soil.soil_moisture_current",
+          "soil.texture",
+          "soil.water_holding_capacity",
+          "weather"
+        ]
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Growth Stage Assessment",
+      "severity": "critical",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `growth_yield.current_growth_stage` is 'tillering', but the `growth_yield.growth_stage_assessment` states 'Late by 879 days (accelerated development)'. This is a contradiction. A crop sown on 2023-11-10 cannot be 'late by 879 days' and simultaneously be in an 'accelerated development' state, especially when the report date is 2026-06-06.",
+      "evidence": {
+        "input_sowing_date": "2023-11-10",
+        "report_date": "06/06/2026",
+        "growth_yield.current_growth_stage": "tillering",
+        "growth_yield.growth_stage_assessment": "Late by 879 days (accelerated development)"
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "NDVI Analysis Not Using Input Data",
+      "severity": "critical",
+      "category": "input_propagation",
+      "intent_excerpt": "",
+      "observed": "The `growth_trajectory` section reports `current_ndvi: 0`, `ndvi_range: 0.00 to 0.00`, and `mean_ndvi: 0.0`, despite valid `ndvi_timeseries` being provided in the input. This indicates the input NDVI data was not used for this section.",
+      "evidence": {
+        "input_ndvi_timeseries": [
+          {
+            "date": "2023-11-25",
+            "mean_ndvi": 0.21
+          },
+          {
+            "date": "2023-12-20",
+            "mean_ndvi": 0.45
+          },
+          {
+            "date": "2024-01-14",
+            "mean_ndvi": 0.82
+          },
+          {
+            "date": "2024-02-05",
+            "mean_ndvi": 0.79
+          }
+        ],
+        "growth_trajectory.current_ndvi": 0,
+        "growth_trajectory.ndvi_range": "0.00 to 0.00",
+        "growth_trajectory.mean_ndvi": 0.0
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.spot_check",
+      "title": "Fabricated weather data not explicitly declared in output",
+      "severity": "critical",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `jeevn.infrastructure.pseudo_satellite.make_default_weather` step returned fabricated data, indicated by `_fabricated: true`, but the output structure does not include a `_fabricated_fields` key to explicitly list which fields were fabricated, as required by the intent's 'Data Provenance and Fabrication Disclosure' rule.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "result": {
+          "location": {
+            "latitude": 22.5726,
+            "longitude": 88.3639,
+            "timezone": "Asia/Kolkata"
+          },
+          "daily": {
+            "dates": [
+              "2026-05-31",
+              "2026-06-01",
+              "2026-06-02",
+              "2026-06-03",
+              "2026-06-04",
+              "2026-06-05",
+              "2026-06-06"
+            ],
+            "temp_max": [
+              35,
+              36,
+              37,
+              36,
+              35,
+              34,
+              33
+            ],
+            "temp_min": [
+              25,
+              26,
+              27,
+              26,
+              25,
+              24,
+              23
+            ],
+            "temp_mean": [
+              30,
+              31,
+              32,
+              31,
+              30,
+              29,
+              28
+            ],
+            "rainfall": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              5,
+              0
+            ],
+            "solar_radiation": [
+              25,
+              26,
+              27,
+              26,
+              25,
+              22,
+              24
+            ],
+            "wind_speed": [
+              8,
+              8,
+              9,
+              8,
+              7,
+              6,
+              7
+            ]
+          },
+          "_fabricated": true
+        }
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Incorrect Sowing Date Propagation and Growth Stage Calculation",
+      "severity": "critical",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `sowing_date` (2024-06-20) is not correctly used to calculate 'days since sowing' for growth stage determination. The report states 'current_growth_stage': 'tillering' and 'growth_stage_assessment': 'Late by 656 days (accelerated development)'. This is a contradiction and indicates a miscalculation. From 2024-06-20 to 2026-06-06 (report_date), there are approximately 716 days, not 656. Furthermore, 'tillering' is an early growth stage, and being 'Late by 656 days' for tillering is nonsensical. The 'days_in_stage' in 'environmental_context.growth_stage' is also 716, which matches the total days since sowing, but this should not be the 'days_in_stage' for tillering.",
+      "evidence": {
+        "input_sowing_date": "2024-06-20",
+        "report_date": "06/06/2026",
+        "growth_yield.current_growth_stage": "tillering",
+        "growth_yield.growth_stage_assessment": "Late by 656 days (accelerated development)",
+        "environmental_context.growth_stage.days_in_stage": 716
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "sowing_date_impact",
+      "title": "Changing the sowing date should result in a different current growth stage.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Changing the sowing date should result in a different current growth stage.",
+      "observed": "Changing the sowing date had no effect on the calculated current_growth_stage.",
+      "evidence": {
+        "base_sowing_date": "2023-11-10",
+        "variant_sowing_date": "2024-02-15",
+        "observed_stage": "tillering",
+        "variant_case_id": "case_cae40ccb"
+      },
+      "confidence": 1.0,
+      "count": 3,
+      "repro_case_ids": [
+        "case_76208838",
+        "case_f315aff5",
+        "case_b2c6b015"
+      ]
+    },
+    {
+      "check_id": "code_scan.hardcoded_satellite_visit_date",
+      "title": "[code-review] Satellite visit date is hardcoded to the report generation date",
+      "severity": "high",
+      "category": "code-suspicion",
+      "intent_excerpt": "The `satellite_visit` field in the `aoi_info` dictionary is populated using `datetime.now().strftime(\"%d %b %Y\")`. This is incorrect; the visit date should correspond to the acquisition date of the satellite imagery used (e.g., from `sar_data['scene_date']` or the date of the latest `ndvi_timeseries` entry), not the date the report was generated.",
+      "observed": "The report will always show the current date as the 'satellite visit date', regardless of when the actual satellite data was captured. This provides false information about data freshness and provenance.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator.generate_report:81",
+        "probe_hint": "Run the report on two different days using the exact same input data, including a fixed `sar_data` dictionary with a `scene_date` from last month. The `satellite_visit` field in the output will change to the current date each time, instead of remaining static and matching the `scene_date`."
+      },
+      "confidence": 0.5,
+      "count": 1,
+      "repro_case_ids": []
+    },
+    {
+      "check_id": "code_scan.inconsistent_ndvi_source",
+      "title": "[code-review] Inconsistent NDVI sources used for point-in-time vs. trajectory analysis",
+      "severity": "high",
+      "category": "code-suspicion",
+      "intent_excerpt": "When both `ndvi_timeseries` and `ndvi_raster_data` are provided, `_process_ndvi_data` first sets `data['ndvi']` from the timeseries, but then overwrites it with the value from the raster data. However, the `growth_trajectory` analysis in the main function is still performed on the original `ndvi_timeseries`. This can lead to a report where the current NDVI value (used for irrigation, yield, etc.) is inconsistent with the trend line.",
+      "observed": "The report's `growth_trajectory` might show a declining trend ending at NDVI=0.7, while the `growth_yield` projection and other current-state calculations are based on a current NDVI of 0.5 (from the raster), creating a confusing and contradictory narrative for the user.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator._process_ndvi_data:201",
+        "probe_hint": "Call `generate_report` with an `ndvi_timeseries` where the last point is `{'ndvi': 0.7}` and an `ndvi_raster_data` dictionary where `{'ndvi_mean': 0.5}`. The resulting report will have a trajectory ending at 0.7 but other calculations will be based on 0.5."
+      },
+      "confidence": 0.5,
+      "count": 1,
+      "repro_case_ids": []
+    },
+    {
+      "check_id": "internal_consistency_soil",
+      "title": "Soil properties in 'soil_management' must be consistent with 'environmental_context'.",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "Soil properties in 'soil_management' must be consistent with 'environmental_context'.",
+      "observed": "Soil properties are inconsistent between soil_management and environmental_context.",
+      "evidence": {
+        "mismatches": [
+          {
+            "field": "ph",
+            "soil_management": 8.2,
+            "environmental_context": 8.18
+          }
+        ]
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_846400aa"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Harvest Status and Growth Stage",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The report states `growth_yield.harvest_status` as 'ready' while `growth_yield.current_growth_stage` is 'tillering'. These two states are mutually exclusive for a crop like Wheat. A crop in the tillering stage is far from being ready for harvest.",
+      "evidence": {
+        "growth_yield.harvest_status": "ready",
+        "growth_yield.current_growth_stage": "tillering"
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Growth Stage Duration",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `environmental_context.growth_stage.days_in_stage` is reported as 939 days. This is an extremely long duration for a single growth stage (tillering) and is inconsistent with the typical lifecycle of Wheat.",
+      "evidence": {
+        "environmental_context.growth_stage.stage": "tillering",
+        "environmental_context.growth_stage.days_in_stage": 939
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.spot_check",
+      "title": "Fabricated weather data dates are in the future",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `jeevn.infrastructure.pseudo_satellite.make_default_weather` step returned fabricated weather data with dates starting from '2026-05-31'. The input `sowing_date` is '2024-06-20', implying the report is for the current or recent past season. Future weather data is not relevant for current agronomic calculations.",
+      "evidence": {
+        "step_name": "jeevn.infrastructure.pseudo_satellite.make_default_weather",
+        "input_sowing_date": "2024-06-20",
+        "fabricated_weather_dates": [
+          "2026-05-31",
+          "2026-06-01",
+          "2026-06-02",
+          "2026-06-03",
+          "2026-06-04",
+          "2026-06-05",
+          "2026-06-06"
+        ]
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Salinity Status Reporting",
+      "severity": "high",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.salinity` is reported as 'moderate', but `environmental_context.soil.properties.salinity_label` is 'non-saline'. These two values contradict each other.",
+      "evidence": {
+        "soil_management.salinity": "moderate",
+        "environmental_context.soil.properties.salinity_label": "non-saline"
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "NDVI Data Not Used for Growth Trajectory Analysis",
+      "severity": "high",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The `ndvi_timeseries` input data is provided, but the `growth_trajectory` section reports 'current_ndvi': 0, 'ndvi_range': '0.00 to 0.00', and 'mean_ndvi': 0.0, with 'data_points': 2. This indicates that the provided NDVI data (0.18 and 0.33) was not used for the analysis, despite the intent to generate the `growth_yield.monitoring` section using this data.",
+      "evidence": {
+        "input_ndvi_timeseries": [
+          {
+            "date": "2024-07-05",
+            "mean_ndvi": 0.18
+          },
+          {
+            "date": "2024-07-20",
+            "mean_ndvi": 0.33
+          }
+        ],
+        "growth_trajectory.current_ndvi": 0,
+        "growth_trajectory.ndvi_range": "0.00 to 0.00",
+        "growth_trajectory.mean_ndvi": 0.0,
+        "growth_trajectory.data_points": 2
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "yield_calculation",
+      "title": "Total yield must equal yield per acre multiplied by the area.",
+      "severity": "medium",
+      "category": "accuracy",
+      "intent_excerpt": "Total yield must equal yield per acre multiplied by the area.",
+      "observed": "Total yield calculation is incorrect.",
+      "evidence": {
+        "errors": [
+          {
+            "type": "actual_yield",
+            "yield_per_acre": 3102.0,
+            "area": 25.0,
+            "expected_total": 77550.0,
+            "observed_total": 77562.5
+          }
+        ]
+      },
+      "confidence": 1.0,
+      "count": 6,
+      "repro_case_ids": [
+        "case_76208838",
+        "case_f315aff5",
+        "case_b2c6b015",
+        "case_097243b0",
+        "case_3743adcf"
+      ]
+    },
+    {
+      "check_id": "code_scan.rvi_proxy_not_flagged",
+      "title": "[code-review] RVI derived from NDVI is not flagged as a proxy",
+      "severity": "medium",
+      "category": "code-suspicion",
+      "intent_excerpt": "When a real NDVI value is available but no real SAR data is, the code calculates a proxy RVI (`ts_ndvi * 1.08`) and then removes 'rvi' from the `fabricated` set. This is misleading. While derived from real data, this RVI is an estimate, not a direct radar measurement. According to the stated intent, such non-direct values should be disclosed.",
+      "observed": "The final report will show an RVI value, but the `data_quality.fabricated_fields` list will not contain 'rvi'. This misleads the user into thinking they have a real radar measurement when they only have an optical-derived proxy, potentially giving them false confidence in the value.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:AgriculturalReportGenerator._process_ndvi_data:192",
+        "probe_hint": "Call `generate_report` with a valid `ndvi_timeseries` (containing a real NDVI value) but with `sar_data=None`. The resulting report's `data_quality.fabricated_fields` will be missing 'rvi', and the `details` will not explain its proxy origin."
+      },
+      "confidence": 0.5,
+      "count": 1,
+      "repro_case_ids": []
+    },
+    {
+      "check_id": "code_scan.dropped_raster_data_input",
+      "title": "[code-review] Convenience wrapper function drops the `ndvi_raster_data` input",
+      "severity": "medium",
+      "category": "code-suspicion",
+      "intent_excerpt": "The wrapper function `generate_agricultural_report_from_aoi` does not have `ndvi_raster_data` in its signature and therefore does not pass it to the underlying `AgriculturalReportGenerator.generate_report` method. This makes it impossible for any code using this convenience entrypoint to provide raster data.",
+      "observed": "The `field_maps` component of the report will always be empty/null when using the `generate_agricultural_report_from_aoi` function, even if raster data is available and intended to be used. The point-in-time NDVI value will also never be sourced from a raster when using this entrypoint.",
+      "evidence": {
+        "location": "jeevn.application.advisory_service:generate_agricultural_report_from_aoi",
+        "probe_hint": "Attempt to generate a report with field maps using the `generate_agricultural_report_from_aoi` function. It's impossible because the function signature doesn't accept `ndvi_raster_data`. If the signature were modified to accept it, the data would still be dropped as it's not passed to the internal call."
+      },
+      "confidence": 0.5,
+      "count": 1,
+      "repro_case_ids": []
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Salinity Assessment",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.salinity` is reported as 'high', but the `environmental_context.soil.properties.salinity_label` is 'slightly saline'. These two assessments contradict each other.",
+      "evidence": {
+        "soil_management.salinity": "high",
+        "environmental_context.soil.properties.salinity_label": "slightly saline"
+      },
+      "confidence": 1.0,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Soil Organic Carbon Status",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `soil_management.organic_carbon_status` states 'critically low (current: 0.15%, min required: 0.8%)', but the `fertilizer_management.nutrient_requirements` does not list Carbon as a nutrient with a gap, nor does it explicitly link the low organic carbon to nutrient deficiencies in its 'limiting_factors'. While organic carbon is not a direct nutrient, its critical level should influence nutrient availability and be reflected more directly in fertilizer recommendations or limiting factors.",
+      "evidence": {
+        "soil_management.organic_carbon_percent": 0.15,
+        "soil_management.organic_carbon_status": "critically low (current: 0.15%, min required: 0.8%)",
+        "fertilizer_management.nutrient_requirements": {
+          "N": {
+            "current_kg_per_acre": 13.65,
+            "target_kg_per_acre": "36.4-47.3",
+            "gap_kg_per_acre": 33.7,
+            "status": "critical"
+          },
+          "P": {
+            "current_kg_per_acre": 11.0,
+            "target_kg_per_acre": "18.2-23.7",
+            "gap_kg_per_acre": 12.67,
+            "status": "critical"
+          },
+          "K": {
+            "current_kg_per_acre": 82.0,
+            "target_kg_per_acre": "18.2-23.7",
+            "gap_kg_per_acre": 0,
+            "status": "adequate"
+          },
+          "S": {
+            "current_kg_per_acre": 7.0,
+            "target_kg_per_acre": "9.7-14.7",
+            "gap_kg_per_acre": 7.74,
+            "status": "critical"
+          },
+          "Zn": {
+            "current_kg_per_acre": 0.8,
+            "target_kg_per_acre": "4.4-9.4",
+            "gap_kg_per_acre": 8.57,
+            "status": "critical"
+          }
+        },
+        "growth_yield.limiting_factors": [
+          {
+            "factor": "Nutrient deficiency",
+            "impact": "15.0% yield reduction"
+          }
+        ]
+      },
+      "confidence": 0.8,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Fertilizer Recommendation for DAP",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `fertilizer_management.nutrient_requirements.P.gap_kg_per_acre` is 12.67 kg/acre. DAP (Diammonium Phosphate) typically contains 46% P2O5, which is about 20% P. To supply 12.67 kg of P, approximately 63.35 kg of DAP would be needed (12.67 / 0.20). The recommended quantity of DAP is 63.35 kg/acre, which matches the P gap. However, DAP also contains 18% Nitrogen. This means 63.35 kg of DAP would supply approximately 11.4 kg of N (63.35 * 0.18). This N contribution from DAP is not accounted for in the Urea recommendations, which are based on 50% of the N requirement each, potentially leading to over-application of N.",
+      "evidence": {
+        "fertilizer_management.nutrient_requirements.P.gap_kg_per_acre": 12.67,
+        "fertilizer_management.nutrient_requirements.N.gap_kg_per_acre": 33.7,
+        "fertilizer_management.fertilizer_schedule.recommended_products": [
+          {
+            "product": "Urea (46% N) - Base application",
+            "quantity_kg_acre": 36.63,
+            "notes": "50% of N requirement"
+          },
+          {
+            "product": "Urea (46% N) - Top dressing",
+            "quantity_kg_acre": 36.63,
+            "notes": "50% of N requirement; critical for grain fill"
+          },
+          {
+            "product": "DAP - Diammonium Phosphate",
+            "quantity_kg_acre": 63.35,
+            "notes": "Ensures available P at seedling stage"
+          }
+        ]
+      },
+      "confidence": 0.9,
+      "count": 1,
+      "repro_case_ids": [
+        "case_76208838"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Fabrication Disclosure Inconsistency for Weather Data",
+      "severity": "medium",
+      "category": "fabrication",
+      "intent_excerpt": "",
+      "observed": "The `data_quality.fabricated_fields` lists 'weather' as fabricated, with the detail 'Weather data (Open-Meteo unreachable; using semi-arid May defaults)'. However, the `environmental_context.weather.daily` section contains specific daily weather data (temperatures, rainfall, solar radiation, wind speed) for dates from 2026-05-31 to 2026-06-06, which contradicts the idea of using 'semi-arid May defaults'. If it's fabricated, it should either be explicitly stated as such in the data itself or the data should reflect the 'defaults' more clearly.",
+      "evidence": {
+        "data_quality.fabricated_fields": [
+          "weather"
+        ],
+        "data_quality.details.weather": "Weather data (Open-Meteo unreachable; using semi-arid May defaults)",
+        "environmental_context.weather.daily": {
+          "dates": [
+            "2026-05-31",
+            "2026-06-01",
+            "2026-06-02",
+            "2026-06-03",
+            "2026-06-04",
+            "2026-06-05",
+            "2026-06-06"
+          ],
+          "temp_max": [
+            35,
+            36,
+            37,
+            36,
+            35,
+            34,
+            33
+          ],
+          "temp_min": [
+            25,
+            26,
+            27,
+            26,
+            25,
+            24,
+            23
+          ],
+          "temp_mean": [
+            30,
+            31,
+            32,
+            31,
+            30,
+            29,
+            28
+          ],
+          "rainfall": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            5,
+            0
+          ],
+          "solar_radiation": [
+            25,
+            26,
+            27,
+            26,
+            25,
+            22,
+            24
+          ],
+          "wind_speed": [
+            8,
+            8,
+            9,
+            8,
+            7,
+            6,
+            7
+          ]
+        }
+      },
+      "confidence": 0.9,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent KC Value for Growth Stage",
+      "severity": "medium",
+      "category": "internal_consistency",
+      "intent_excerpt": "",
+      "observed": "The `irrigation_schedule.kc` is 0.51, while `environmental_context.growth_stage.kc` is 0.5. While these are close, they should ideally be consistent if they refer to the same crop coefficient for the current growth stage.",
+      "evidence": {
+        "irrigation_schedule.kc": 0.51,
+        "environmental_context.growth_stage.kc": 0.5
+      },
+      "confidence": 0.8,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    },
+    {
+      "check_id": "llm.final_judge",
+      "title": "Inconsistent Location Name in AOI Info",
+      "severity": "low",
+      "category": "correctness",
+      "intent_excerpt": "",
+      "observed": "The input `location_name` is 'Kolkata, West Bengal, India', but `aoi_info.location` is 'Baranagar'. While Baranagar is a locality within Kolkata, the report should ideally reflect the input location name or provide a clear reason for the change.",
+      "evidence": {
+        "input_location_name": "Kolkata, West Bengal, India",
+        "aoi_info.location": "Baranagar"
+      },
+      "confidence": 0.7,
+      "count": 1,
+      "repro_case_ids": [
+        "case_f315aff5"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "payload": {
+        "lat": 30.89,
+        "lon": 75.86,
+        "area_acres": 25.0,
+        "crop_name": "Wheat",
+        "sowing_date": "2023-11-10",
+        "ndvi_timeseries": [
+          {
+            "date": "2023-11-25",
+            "mean_ndvi": 0.21
+          },
+          {
+            "date": "2023-12-20",
+            "mean_ndvi": 0.45
+          },
+          {
+            "date": "2024-01-14",
+            "mean_ndvi": 0.82
+          },
+          {
+            "date": "2024-02-05",
+            "mean_ndvi": 0.79
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Ludhiana, Punjab, India"
+      },
+      "id": "case_76208838",
+      "label": "Wheat field in Punjab, mid-season",
+      "rationale": "discovered example",
+      "origin": "default",
+      "tags": []
+    },
+    {
+      "payload": {
+        "lat": 22.5726,
+        "lon": 88.3639,
+        "area_acres": 8.0,
+        "crop_name": "Rice",
+        "sowing_date": "2024-06-20",
+        "ndvi_timeseries": [
+          {
+            "date": "2024-07-05",
+            "mean_ndvi": 0.18
+          },
+          {
+            "date": "2024-07-20",
+            "mean_ndvi": 0.33
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Kolkata, West Bengal, India"
+      },
+      "id": "case_f315aff5",
+      "label": "Rice paddy in West Bengal, early-season",
+      "rationale": "discovered example",
+      "origin": "default",
+      "tags": []
+    },
+    {
+      "payload": {
+        "lat": 22.3,
+        "lon": 70.78,
+        "area_acres": 50.2,
+        "crop_name": "Cotton",
+        "sowing_date": "2023-06-15",
+        "ndvi_timeseries": [
+          {
+            "date": "2023-07-10",
+            "mean_ndvi": 0.25
+          },
+          {
+            "date": "2023-08-15",
+            "mean_ndvi": 0.65
+          },
+          {
+            "date": "2023-09-20",
+            "mean_ndvi": 0.85
+          },
+          {
+            "date": "2023-10-25",
+            "mean_ndvi": 0.7
+          },
+          {
+            "date": "2023-11-30",
+            "mean_ndvi": 0.55
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Rajkot, Gujarat, India"
+      },
+      "id": "case_b2c6b015",
+      "label": "Cotton field in Gujarat, late-season",
+      "rationale": "discovered example",
+      "origin": "default",
+      "tags": []
+    },
+    {
+      "payload": {
+        "lat": 30.89,
+        "lon": 75.86,
+        "area_acres": 25.0,
+        "crop_name": "Wheat",
+        "sowing_date": "2022-11-10",
+        "ndvi_timeseries": [
+          {
+            "date": "2022-11-25",
+            "mean_ndvi": 0.21
+          },
+          {
+            "date": "2022-12-20",
+            "mean_ndvi": 0.45
+          },
+          {
+            "date": "2023-01-14",
+            "mean_ndvi": 0.82
+          },
+          {
+            "date": "2023-02-05",
+            "mean_ndvi": 0.79
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Ludhiana, Punjab, India (Historical)"
+      },
+      "id": "case_097243b0",
+      "label": "Stale NDVI data to check satellite visit date",
+      "rationale": "Probes if the `satellite_visit` date in the report is hardcoded to the report generation date, rather than correctly using the acquisition date of the latest available data. This payload provides NDVI data that is over a year old, which should create a clear discrepancy if the bug exists.",
+      "origin": "hypothesis",
+      "tags": [
+        "correctness",
+        "data_provenance",
+        "time",
+        "hyp:hardcoded_satellite_visit_date"
+      ]
+    },
+    {
+      "payload": {
+        "lat": 22.3,
+        "lon": 70.78,
+        "area_acres": 50.2,
+        "crop_name": "Cotton",
+        "sowing_date": "2023-06-15",
+        "ndvi_timeseries": [
+          {
+            "date": "2023-07-10",
+            "mean_ndvi": 0.25
+          },
+          {
+            "date": "2023-08-15",
+            "mean_ndvi": 0.65
+          },
+          {
+            "date": "2023-09-20",
+            "mean_ndvi": 0.85
+          }
+        ],
+        "ndvi_raster_data": {
+          "date": "2023-09-22",
+          "ndvi_mean": 0.41,
+          "ndvi_std": 0.1
+        },
+        "location_name": "Rajkot, Gujarat, India"
+      },
+      "id": "case_3743adcf",
+      "label": "Conflicting NDVI from timeseries vs. raster",
+      "rationale": "Tests for inconsistent state management by providing contradictory NDVI values. The timeseries shows a high final NDVI, while the more recent raster data shows a low NDVI. This should expose if the system uses one source for trajectory analysis and another for current-state calculations, leading to a confusing report.",
+      "origin": "hypothesis",
+      "tags": [
+        "correctness",
+        "conflicting_input",
+        "internal_consistency",
+        "hyp:inconsistent_ndvi_source"
+      ]
+    },
+    {
+      "payload": {
+        "lat": 25.0,
+        "lon": 10.0,
+        "area_acres": 100.0,
+        "crop_name": "Sorghum",
+        "sowing_date": "2024-07-01",
+        "ndvi_timeseries": [
+          {
+            "date": "2024-07-20",
+            "mean_ndvi": 0.22
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Sahara Desert, Algeria"
+      },
+      "id": "case_846400aa",
+      "label": "Valid NDVI with forced data fallback for other sources",
+      "rationale": "Probes data provenance and fabrication disclosure. This input uses a location in the Sahara Desert, which is likely to cause a fallback for soil data (from ISRIC). It provides valid NDVI, forcing the system to calculate a proxy RVI. The test is to see if 'rvi' and 'soil' are correctly added to the `fabricated_fields` list in the output.",
+      "origin": "hypothesis",
+      "tags": [
+        "correctness",
+        "data_provenance",
+        "graceful_degradation",
+        "boundary",
+        "hyp:rvi_proxy_not_flagged"
+      ]
+    },
+    {
+      "payload": {
+        "lat": 41.5868,
+        "lon": -93.625,
+        "area_acres": 120.0,
+        "crop_name": "Corn",
+        "sowing_date": "2024-05-01",
+        "ndvi_timeseries": [
+          {
+            "date": "2024-06-10",
+            "mean_ndvi": 0.34
+          },
+          {
+            "date": "2024-07-15",
+            "mean_ndvi": 0.78
+          }
+        ],
+        "ndvi_raster_data": {
+          "date": "2024-07-25",
+          "ndvi_mean": 0.22,
+          "ndvi_std": 0.08
+        },
+        "location_name": "Des Moines, Iowa, USA"
+      },
+      "id": "case_48e9d052",
+      "label": "Raster data indicating sudden drop in health",
+      "rationale": "This payload is designed to be used with the `generate_agricultural_report_from_aoi` wrapper function. It provides a non-null `ndvi_raster_data` value showing a critical, recent decline in crop health not present in the older timeseries data. If the wrapper function incorrectly drops this input, the resulting advisory will be dangerously optimistic and miss the sudden health drop.",
+      "origin": "hypothesis",
+      "tags": [
+        "correctness",
+        "integration",
+        "missing_data",
+        "hyp:dropped_raster_data_input"
+      ]
+    }
+  ]
+}

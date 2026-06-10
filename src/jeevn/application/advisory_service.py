@@ -48,6 +48,17 @@ class AgriculturalReportGenerator:
             ndvi_timeseries, ndvi_raster_data, sar_data=sar_data,
         )
 
+        # Radar Soil Moisture: the AOI composer resolves the tiered source
+        # (NISAR SME2 -> Open-Meteo -> fabricated). Override the fabricated
+        # `rsm` default and drop it from the fabricated list when real.
+        rsm_info = aoi_data.get("radar_soil_moisture") or {}
+        if rsm_info.get("value") is not None and rsm_info.get("source") != "fabricated":
+            ndvi_data["rsm"] = rsm_info["value"]
+            ndvi_data["rsm_source"] = rsm_info["source"]
+            if rsm_info.get("pass_date"):
+                ndvi_data["rsm_pass_date"] = rsm_info["pass_date"]
+            ndvi_fabricated = [f for f in ndvi_fabricated if f != "rsm"]
+
         report: Dict[str, Any] = {
             "report_date": datetime.now().strftime("%d/%m/%Y"),
             "aoi_info": {

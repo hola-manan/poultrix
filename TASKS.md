@@ -328,28 +328,6 @@ todo-tracking an agent uses.
         `PROCESSES.md` (how the moisture-stress signal is computed).
         Touch others only if behaviour visible to them changes.
 
-### 4. NISAR L-band soil moisture integration (DEFERRED)
-- **Status:** pending (backlog) — deferred 2026-05-25 after live ASF probe.
-- **Why:** Sentinel-1 C-band SM retrievals are degraded under crop canopy;
-  NISAR L-band sees through it. NASA-ISRO publish the pre-processed L3
-  **SME2** product on ASF (200 m EASE-Grid 2.0, HDF5, ~56 MB/granule, free
-  with Earthdata Login). asf_search has native `processingLevel='SME2'`
-  support, so the consumption side is a normal raster-fetch pattern.
-- **Why deferred:** Live ASF query 2026-05-25 confirmed SME2 is
-  **Beta v1 with sparse delivery**. Globally most-recent granule was
-  2026-01-20, and India has only ~20 granules total, all clustered on
-  2026-01-19/20 — no production updates in 4+ months. Building the
-  adapter today means a code path that always falls through to
-  Open-Meteo. Revisit when NASA-ISRO graduate SME2 from Beta to
-  operational.
-- **When picking up:** the research is done — three-tier design
-  (NISAR → Open-Meteo → fabricated), `asf_search` with
-  `platform='NISAR', processingLevel='SME2', intersectsWith=<wkt>`,
-  Earthdata creds via `EARTHDATA_USER`/`EARTHDATA_PASS`, cache 2 most
-  recent granules under `data/cache/nisar/`, 5 km AOI-to-edge margin,
-  HDF5 internal structure still needs first-download confirmation.
-- **Defers:** SAR-as-truth Open-Meteo calibration → task #6.
-
 ### 6. NISAR ↔ Open-Meteo SM calibration (research-grade)
 - **Status:** pending (backlog, depends on #4)
 - **Why:** Once paired NISAR + Open-Meteo SM observations accumulate per AOI,
@@ -367,6 +345,35 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 4. NISAR L-band soil moisture integration (SME2)
+- **Resolved:** 2026-05-29
+- One-liner: New `infrastructure/data_sources/nisar.py` —
+  `NisarSoilMoistureClient.fetch_sm_at(lat, lon, days_back=14)` runs the
+  full pipeline: keyless `asf_search` for the latest SME2 granule over the
+  AOI → Earthdata-authenticated download of the ~120 MB HDF5 to
+  `data/cache/nisar/` (gitignored, keeps 2 most-recent) → reads
+  `soilMoisture` (m³/m³) at the nearest EASE-grid cell from the first
+  candidate algorithm (DSG→PMI→TSR) with `retrievalQualityFlag==0`, with a
+  ~5 km edge-margin reject. HDF5 layout confirmed against a real 2026-01-18
+  granule (`science/LSAR/SME2/grids/...`, EPSG:6933, fill -9999). Wired as
+  the **top tier of a tiered RSM source** in the AOI composer:
+  NISAR (m³/m³ → fraction-of-FC via texture) → Open-Meteo
+  `soil_moisture_current` → fabricated `0.72`; `advisory_service` overrides
+  `ndvi_data["rsm"]` and drops `rsm` from `data_quality.fabricated_fields`
+  when real. Creds via `EARTHDATA_USER`/`EARTHDATA_PASS` (+ authorise the
+  "ASF Data Access" app); composer only attempts NISAR when creds are set.
+  Live-verified end-to-end against the 2026-01-18 granule (0.2257 m³/m³,
+  DSG, qflag 0); composer today falls through to Open-Meteo (no pass in
+  14-day window — SME2 production paused since 2026-01-20) and `rsm` is no
+  longer in fabricated_fields (was `['ndvi','rsm']` → `['ndvi']`). 7 new
+  tests (mocked search/download/sample, no-creds + no-pass fallbacks, +2
+  against the real cached granule). 137 tests pass. The NISAR tier is
+  dormant until NASA-ISRO resume SME2 production, then activates with no
+  code change. `asf_search` + `h5py` added to requirements.txt;
+  `.env.example` documents the Earthdata setup.
+- **Enables:** task #6 (NISAR ↔ Open-Meteo SM calibration) once paired
+  observations accumulate.
 
 ### Bugfix — irrigation schedule: ET0 units + rain-aware forecast scheduling
 - **Resolved:** 2026-05-26

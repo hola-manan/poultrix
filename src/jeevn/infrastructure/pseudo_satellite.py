@@ -198,7 +198,7 @@ def make_default_terrain() -> Dict[str, Any]:
 FABRICATED_FIELD_DESCRIPTIONS: Dict[str, str] = {
     "ndvi": "Normalized Difference Vegetation Index (no satellite reading available)",
     "rvi": "Radar Vegetation Index (derived from a fabricated NDVI)",
-    "rsm": "Radar Soil Moisture (no satellite reading available)",
+    "rsm": "Radar Soil Moisture (no NISAR pass in window + Open-Meteo soil moisture unavailable; using fallback default)",
     "weather": "Weather data (Open-Meteo unreachable; using semi-arid May defaults)",
     "forecast": "7-day weather forecast (Open-Meteo forecast API unreachable; irrigation rain-adjustment using zero-rain defaults)",
     "soil": "Soil properties (SoilGrids unreachable; using region template)",

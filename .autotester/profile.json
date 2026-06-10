@@ -1,0 +1,170 @@
+{
+  "name": "jeevn",
+  "root": "C:\\Users\\manan\\OneDrive2\\Desktop\\ashi",
+  "src_roots": [
+    "src"
+  ],
+  "entrypoint": {
+    "module": "jeevn.application.advisory_service",
+    "qualname": "AgriculturalReportGenerator.generate_report",
+    "kind": "staticmethod",
+    "params": [
+      {
+        "name": "lat",
+        "example": 28.7041,
+        "required": true
+      },
+      {
+        "name": "lon",
+        "example": 77.1025,
+        "required": true
+      },
+      {
+        "name": "area_acres",
+        "example": 12.5,
+        "required": true
+      },
+      {
+        "name": "crop_name",
+        "example": "Wheat",
+        "required": true
+      },
+      {
+        "name": "sowing_date",
+        "example": "2023-11-15",
+        "required": true
+      },
+      {
+        "name": "ndvi_timeseries",
+        "example": [
+          {
+            "date": "2023-11-20",
+            "mean_ndvi": 0.15
+          },
+          {
+            "date": "2023-12-10",
+            "mean_ndvi": 0.35
+          },
+          {
+            "date": "2024-01-15",
+            "mean_ndvi": 0.78
+          }
+        ],
+        "required": true
+      },
+      {
+        "name": "ndvi_raster_data",
+        "example": null,
+        "required": true
+      },
+      {
+        "name": "location_name",
+        "example": "Delhi, India",
+        "required": true
+      }
+    ]
+  },
+  "instrument_targets": [
+    "jeevn.infrastructure.data_sources.weather.WeatherDataFetcher:fetch_weather",
+    "jeevn.infrastructure.data_sources.soil.SoilDataFetcher:fetch_soil_data",
+    "jeevn.infrastructure.data_sources.terrain.TerrainDataFetcher:fetch_terrain",
+    "jeevn.infrastructure.pseudo_satellite:make_default_weather",
+    "jeevn.infrastructure.pseudo_satellite:make_default_soil",
+    "jeevn.domain.crop.phenology.CropPhenologyDatabase:get_current_growth_stage",
+    "jeevn.domain.irrigation.scheduler.IrrigationScheduler:generate_schedule",
+    "jeevn.domain.fertilizer.requirements.NutrientRequirementCalculator:calculate_nutrient_requirements",
+    "jeevn.domain.growth_yield.monitoring.GrowthMonitoring:analyze_growth_trajectory",
+    "jeevn.domain.pest_disease_weed.assessment.PestDiseaseWeedAssessor:assess_pest_disease_risk",
+    "jeevn.domain.soil.management.SoilManagementCalculator:analyze_soil"
+  ],
+  "example_cases": [
+    {
+      "label": "Wheat field in Punjab, mid-season",
+      "payload": {
+        "lat": 30.89,
+        "lon": 75.86,
+        "area_acres": 25.0,
+        "crop_name": "Wheat",
+        "sowing_date": "2023-11-10",
+        "ndvi_timeseries": [
+          {
+            "date": "2023-11-25",
+            "mean_ndvi": 0.21
+          },
+          {
+            "date": "2023-12-20",
+            "mean_ndvi": 0.45
+          },
+          {
+            "date": "2024-01-14",
+            "mean_ndvi": 0.82
+          },
+          {
+            "date": "2024-02-05",
+            "mean_ndvi": 0.79
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Ludhiana, Punjab, India"
+      }
+    },
+    {
+      "label": "Rice paddy in West Bengal, early-season",
+      "payload": {
+        "lat": 22.5726,
+        "lon": 88.3639,
+        "area_acres": 8.0,
+        "crop_name": "Rice",
+        "sowing_date": "2024-06-20",
+        "ndvi_timeseries": [
+          {
+            "date": "2024-07-05",
+            "mean_ndvi": 0.18
+          },
+          {
+            "date": "2024-07-20",
+            "mean_ndvi": 0.33
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Kolkata, West Bengal, India"
+      }
+    },
+    {
+      "label": "Cotton field in Gujarat, late-season",
+      "payload": {
+        "lat": 22.3,
+        "lon": 70.78,
+        "area_acres": 50.2,
+        "crop_name": "Cotton",
+        "sowing_date": "2023-06-15",
+        "ndvi_timeseries": [
+          {
+            "date": "2023-07-10",
+            "mean_ndvi": 0.25
+          },
+          {
+            "date": "2023-08-15",
+            "mean_ndvi": 0.65
+          },
+          {
+            "date": "2023-09-20",
+            "mean_ndvi": 0.85
+          },
+          {
+            "date": "2023-10-25",
+            "mean_ndvi": 0.7
+          },
+          {
+            "date": "2023-11-30",
+            "mean_ndvi": 0.55
+          }
+        ],
+        "ndvi_raster_data": null,
+        "location_name": "Rajkot, Gujarat, India"
+      }
+    }
+  ],
+  "python": "C:\\Users\\manan\\OneDrive2\\Desktop\\ashi\\.venv\\Scripts\\python.exe",
+  "notes": ""
+}

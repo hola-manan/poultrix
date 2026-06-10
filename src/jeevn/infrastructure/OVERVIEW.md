@@ -37,7 +37,9 @@ Special behaviour:
 - Walks the weather daily `temp_mean` series with `t_base` from the crop's phenology entry to accumulate Growing-Degree-Days, feeds GDD into `CropPhenologyDatabase.get_current_growth_stage` for a more accurate stage than the days-based heuristic.
 - Surfaces a structured `_aoi_in_built_up_land` **alert** (not just a flag) when SoilGrids reports all-null at the centroid — the UI displays a red banner with a "redraw the polygon over actual cropland" instruction.
 
-**Returns** a dict with `location`, `weather`, `soil`, `terrain`, `crop`, `current_growth_stage`, `sowing_date`, `days_since_sowing`, `accumulated_gdd`, `crop_name`, `_fabricated_sources`, `_alerts`.
+- Resolves a tiered **`radar_soil_moisture`** (RSM): NISAR SME2 (m³/m³ → fraction via texture field capacity, only attempted when Earthdata creds are set) → Open-Meteo `soil_moisture_current` → fabricated `pseudo_satellite.RSM`. Surfaced so `advisory_service` can override the `rsm` default and drop it from the fabricated list when real.
+
+**Returns** a dict with `location`, `weather`, `forecast`, `soil`, `terrain`, `radar_soil_moisture`, `crop`, `current_growth_stage`, `sowing_date`, `days_since_sowing`, `accumulated_gdd`, `crop_name`, `_fabricated_sources`, `_alerts`.
 
 ### [`data_sources/weather.py`](data_sources/weather.py) — Open-Meteo
 - **Endpoint:** `https://archive-api.open-meteo.com/v1/archive` (no API key).
@@ -67,6 +69,13 @@ Three-tier resolution for slope + aspect:
 - Tries locality keys in priority order: `city → town → village → hamlet → suburb → county` (rural polygons rarely have `city`).
 - **Returns** `{latitude, longitude, name, city, state, country, display_name, timezone, _fabricated: False}`.
 - On any failure → `pseudo_satellite.make_default_location(lat, lon)`.
+
+### [`data_sources/nisar.py`](data_sources/nisar.py) — NISAR SME2 L-band soil moisture
+- **`NisarSoilMoistureClient.fetch_sm_at(lat, lon, days_back=14)`** — three-stage pipeline: (1) keyless `asf_search` query for the latest SME2 granule over the AOI within `days_back`; (2) Earthdata-authenticated download of the granule HDF5 (~120 MB) to `data/cache/nisar/` (gitignored, keeps the 2 most-recent); (3) read `soilMoisture` (m³/m³) at the nearest grid cell from the first candidate algorithm (DSG → PMI → TSR) whose `retrievalQualityFlag` is 0. Rejects points within ~5 km of the granule edge.
+- **HDF5 layout** (confirmed against a real 2026-01 granule): `science/LSAR/SME2/grids/` with 1-D `latitude`/`longitude` and `algorithmCandidates/{DSG,PMI,TSR}/{soilMoisture, retrievalQualityFlag}`. EPSG:6933 EASE-Grid 2.0; fill `-9999`; units m³/m³.
+- **Credentials:** `EARTHDATA_USER`/`EARTHDATA_PASS` env vars (search is keyless; download needs auth + the "ASF Data Access" app authorised on the Earthdata profile). No creds → returns None.
+- **Returns** `{soil_moisture_m3m3, algorithm, quality_flag, pass_date, granule_id, source: "nisar-sme2"}` or None.
+- **Status:** SME2 is Beta v1, production paused since 2026-01-20, so live requests find no fresh pass and the composer falls through to Open-Meteo. The pipeline is real + tested against historical granules and lights up when production resumes.
 
 ### [`data_sources/sar.py`](data_sources/sar.py) — Sentinel-1 RTC backscatter (real RVI)
 - **`Sentinel1Client.fetch_latest_rvi(lat, lon, days_back=10)`** — queries Microsoft Planetary Computer's STAC catalogue for the `sentinel-1-rtc` collection at the AOI point in the last `days_back` days. Picks the newest scene, signs the VV + VH asset hrefs with an MPC SAS token, reads a 5×5 pixel window at the centroid via rasterio `/vsicurl/` (HTTP range reads, no full-scene download), computes the mean linear-power backscatter for each band.
@@ -123,5 +132,5 @@ Opt-in MLflow helpers. `setup_mlflow()` honours `MLFLOW_TRACKING_URI`. `log_dumm
 
 ## Tests
 
-- [tests/infrastructure/data_sources/](../../../tests/infrastructure/data_sources/) — `test_aoi.py`, `test_soil.py`, `test_terrain.py`, `test_weather.py`, `test_sentinel1_sar.py`.
+- [tests/infrastructure/data_sources/](../../../tests/infrastructure/data_sources/) — `test_aoi.py`, `test_soil.py`, `test_terrain.py`, `test_weather.py`, `test_sentinel1_sar.py`, `test_nisar.py`.
 - [tests/infrastructure/db/test_models.py](../../../tests/infrastructure/db/test_models.py) — round-trip checks for AOI / IngestJob / Artifact.

@@ -484,15 +484,29 @@ def generate_pdf(report: Dict[str, Any],
     mo_cnt  = summ.get('moderate_risk_count', 0)
     lo_cnt  = summ.get('low_risk_count', 0)
 
-    env_cond     = pest_data.get('environmental_conditions', {})
-    temp_mean    = env_cond.get('temperature', 30)
-    humidity_est = env_cond.get('humidity_estimate', 60)
-    rsm_val      = env_cond.get('rsm', 0.72)
-    gs_pest      = (env_cond.get('growth_stage') or 'growth').replace('_', ' ')
+    env_cond       = pest_data.get('environmental_conditions', {})
+    temp_mean      = env_cond.get('temperature', 30)
+    humidity_est   = env_cond.get('humidity_estimate', 60)
+    rsm_val        = env_cond.get('rsm', 0.72)
+    rsm_source     = env_cond.get('rsm_source') or 'fabricated'
+    rsm_pass_date  = env_cond.get('rsm_pass_date')
+    gs_pest        = (env_cond.get('growth_stage') or 'growth').replace('_', ' ')
+
+    rsm_source_label = {
+        'nisar-sme2': f'NISAR L-band (pass {rsm_pass_date})' if rsm_pass_date else 'NISAR L-band',
+        'open-meteo': 'Open-Meteo modelled SM',
+        'fabricated': 'Pending real source',
+    }.get(rsm_source, rsm_source)
 
     story.append(Paragraph('5.  Pest, Disease & Weed Management', S['section']))
     story.append(Paragraph(
         f'High Risk: <b>{hi_cnt}</b> | Moderate Risk: <b>{mo_cnt}</b> | Low Risk: <b>{lo_cnt}</b>',
+        S['subsection']))
+    # Environmental conditions strip — surfaces RSM (was previously buried
+    # in the weed narrative only) with its source.
+    story.append(Paragraph(
+        f'Temperature: <b>{temp_mean:.0f}°C</b> | Humidity (est.): <b>{humidity_est:.0f}%</b> | '
+        f'RSM: <b>{rsm_val:.2f}</b> ({rsm_source_label})',
         S['subsection']))
 
     p_hdrs   = ['Name', 'Category', 'Risk %', 'Risk Level', 'Organic Solution', 'Chemical Solution']
@@ -534,18 +548,24 @@ def generate_pdf(report: Dict[str, Any],
         f'pest life cycles, while {humidity_est:.0f}% estimated humidity increases susceptibility '
         f'to leaf-spot diseases during the sensitive {gs_pest} period.',
         S['body']))
+    rsm_ref = {
+        'nisar-sme2': f'RSM from NISAR L-band SME2 pass {rsm_pass_date or ""}'.rstrip(),
+        'open-meteo': 'RSM from Open-Meteo modelled surface soil moisture (NISAR dormant)',
+        'fabricated': 'RSM is a fabricated default — no real source available',
+    }.get(rsm_source, f'RSM source: {rsm_source}')
     story.append(Paragraph(
         '<i>References: Based on ICAR-CITH crop phenology guidelines and regional pest alerts. '
-        'Satellite RVI/RSM correlations derived from Sentinel-1 SAR indices for biomass monitoring.</i>',
+        f'RVI from Sentinel-1 RTC backscatter. {rsm_ref}.</i>',
         S['ref']))
 
     story.append(Paragraph('Details — Weed', S['subsection']))
     story.append(Paragraph(
-        f'High soil moisture (RSM {rsm_val:.2f}) suggests recent irrigation or high retention, '
-        'which promotes weed germination in tree basins. Although the high vegetation index '
-        'indicates good canopy closure, any light penetration on the plantation floor will trigger '
-        f'rapid weed growth. The semi-arid climate facilitates weed competition for nutrients '
-        f'during the critical fruit-set transition following {gs_pest}.',
+        f'High soil moisture (RSM {rsm_val:.2f}, {rsm_source_label}) suggests recent '
+        'irrigation or high retention, which promotes weed germination in tree basins. '
+        'Although the high vegetation index indicates good canopy closure, any light '
+        'penetration on the plantation floor will trigger rapid weed growth. The '
+        'semi-arid climate facilitates weed competition for nutrients during the '
+        f'critical fruit-set transition following {gs_pest}.',
         S['body']))
     story.append(Paragraph(
         '<i>References: Weed risk assessed via Indian Society of Weed Science (ISWS) orchard '

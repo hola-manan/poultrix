@@ -15,3 +15,8 @@ streamlit-folium
 reportlab
 matplotlib
 Pillow
+
+# NISAR L-band soil moisture (task #4): ASF SME2 metadata search +
+# Earthdata-authenticated download; h5py reads the SME2 HDF5 product.
+asf_search
+h5py

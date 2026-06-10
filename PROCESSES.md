@@ -91,14 +91,17 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 
 **Scientific ideal:** Inversion model (e.g. Oh 2004, Dubois, IEM) applied to terrain-flattened σ°VV + incidence angle, ideally L-band (deeper sensing depth). NISAR's standard SM product is at 100 m; SMAP at 9 km. Validated against in-situ TDR / FDR probes (Campbell CS650, Decagon 5TE). Output in m³/m³ volumetric water content.
 
-**What this MVP does:** **Constant.** Pulled from `pseudo_satellite.RSM = 0.72` and never overwritten. The variable is read by the pest/weed assessor and the report environmental-conditions block but nothing computes it.
+**What this MVP does:** **Tiered, real-where-possible** (the old `0.72` constant is retired). The AOI composer resolves RSM in priority order, all on the same fraction-of-field-capacity scale the pest/weed thresholds expect:
+1. **NISAR SME2 (L-band)** — when Earthdata creds are present AND a pass falls within ~14 days AND the AOI is ≥5 km from the granule edge. The granule's `soilMoisture` (m³/m³, from the first candidate algorithm — DSG/PMI/TSR — with retrievalQualityFlag 0) is divided by the texture field capacity to a fraction. *Currently dormant:* SME2 production paused 2026-01-20, so the freshness gate falls through today. Verified end-to-end against a real 2026-01-18 granule (0.2257 m³/m³, DSG).
+2. **Open-Meteo modelled SM** — the real fallback (same value as `soil.soil_moisture_current`, B.9). This is what serves live requests today.
+3. **`pseudo_satellite.RSM = 0.72`** — last resort, flagged `rsm` in `data_quality.fabricated_fields`.
 
-**Gap / when it breaks:** Always 0.72. Treat any RSM-driven branch as illustrative.
+**Gap / when it breaks:** NISAR tier is dormant until SME2 resumes; until then RSM = Open-Meteo modelled SM (decent, but modelled not measured). Open-Meteo m³/m³ is normalised by a texture-derived field capacity, so the fraction can clamp to 1.0 after rain.
 
 **Code path:**
-- Data source: [src/jeevn/infrastructure/pseudo_satellite.py](src/jeevn/infrastructure/pseudo_satellite.py) constant.
-- Transformation: none.
-- Outstream: `ndvi_data["rsm"]` in advisory report; surfaces as `environmental_conditions.rsm` and feeds [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`_calculate_weed_risk`).
+- Data source: NISAR via [src/jeevn/infrastructure/data_sources/nisar.py](src/jeevn/infrastructure/data_sources/nisar.py) (`NisarSoilMoistureClient.fetch_sm_at`); Open-Meteo SM via the weather adapter; constant from `pseudo_satellite`.
+- Transformation: tiered resolution + m³/m³→fraction in [src/jeevn/infrastructure/data_sources/aoi.py](src/jeevn/infrastructure/data_sources/aoi.py) (`radar_soil_moisture`); override applied in [src/jeevn/application/advisory_service.py](src/jeevn/application/advisory_service.py).
+- Outstream: `ndvi_data["rsm"]` (+ `rsm_source`, `rsm_pass_date`); surfaces as `environmental_conditions.rsm` and feeds [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`_calculate_weed_risk`).
 
 ---
 

@@ -7,6 +7,7 @@ defaults; this composer hoists those flags into a top-level
 `_fabricated_sources` list so callers can surface them in the report.
 """
 
+import os
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -14,6 +15,7 @@ from .weather import WeatherDataFetcher
 from .soil import SoilDataFetcher, field_capacity_from_texture
 from .geocoding import GeographicDataFetcher
 from .terrain import TerrainDataFetcher
+from .nisar import NisarSoilMoistureClient
 
 # Phenology is pure domain data (no I/O) — infrastructure may depend on domain.
 from jeevn.domain.crop.phenology import CropPhenologyDatabase
@@ -96,6 +98,39 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         # we first scanned `_fabricated_fields`).
         fabricated = [f for f in fabricated if f != "soil.soil_moisture_current"]
 
+    # Radar Soil Moisture (RSM) — tiered, retires the old fabricated 0.72
+    # constant. Same fraction-of-field-capacity scale as soil_moisture_current
+    # so the pest/weed thresholds keep working.
+    #   1. NISAR SME2 L-band (m³/m³ -> fraction) — only attempted when
+    #      Earthdata creds are present (search+download both pointless
+    #      otherwise); currently dormant until SME2 production resumes.
+    #   2. Open-Meteo soil_moisture_current (already a real fraction).
+    #   3. Fabricated default (flagged).
+    texture_for_rsm = soil["properties"].get("texture", "loam")
+    fc_for_rsm = field_capacity_from_texture(texture_for_rsm)
+    rsm: Dict[str, Any] = {"value": pseudo_satellite.RSM, "source": "fabricated"}
+
+    nisar_sm = None
+    if os.environ.get("EARTHDATA_USER") and os.environ.get("EARTHDATA_PASS"):
+        nisar_sm = NisarSoilMoistureClient.fetch_sm_at(lat, lon)
+    if nisar_sm is not None and fc_for_rsm:
+        frac = max(0.0, min(1.0, nisar_sm["soil_moisture_m3m3"] / fc_for_rsm))
+        rsm = {
+            "value": round(frac, 2),
+            "source": "nisar-sme2",
+            "m3m3": nisar_sm["soil_moisture_m3m3"],
+            "pass_date": nisar_sm["pass_date"],
+            "algorithm": nisar_sm["algorithm"],
+        }
+    else:
+        sm_current = soil["properties"].get("soil_moisture_current")
+        sm_is_real = (soil_fabricated_fields or {}).get("soil_moisture_current") is False
+        if sm_current is not None and sm_is_real:
+            rsm = {"value": sm_current, "source": "open-meteo"}
+
+    if rsm["source"] == "fabricated":
+        fabricated.append("rsm")
+
     # If SoilGrids said the AOI centroid is in built-up land, surface a
     # prominent alert so the UI tells the user to redraw the polygon over
     # actual cropland (per the project convention — see memory file
@@ -141,6 +176,7 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         "forecast": forecast,
         "soil": soil,
         "terrain": terrain,
+        "radar_soil_moisture": rsm,
         "crop": crop_data,
         "current_growth_stage": CropPhenologyDatabase.get_current_growth_stage(
             crop_name, days_since_sowing, accumulated_gdd=accumulated_gdd),
