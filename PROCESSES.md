@@ -37,13 +37,13 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 
 **Scientific ideal:** Two acceptable formulations exist — Gao (1996) NDWI = (NIR - SWIR)/(NIR + SWIR) for canopy water; McFeeters (1996) NDWI = (Green - NIR)/(Green + NIR) for open-water mapping. For irrigation health, Gao's NIR-SWIR formulation is the textbook choice. Best ground truth: gravimetric leaf water content (oven-dry mass loss).
 
-**What this MVP does:** `NDWI = (B03 - B11) / (B03 + B11)` — i.e. (Green - SWIR)/(Green + SWIR). The code passes `(green, swir)` into `ndvi_index` (which computes `(b2 - b1)/(b2 + b1)`) and **negates** the result to get the Green-SWIR sign. B03 is 10 m, B11 is 20 m — bilinearly resampled onto the B03 grid.
+**What this MVP does:** `NDWI = (B03 - B11) / (B03 + B11)` — i.e. (Green - SWIR)/(Green + SWIR). Two code paths reach the same value by different routes: the per-date aggregator calls `ndvi_index(swir, green)` with the arguments **swapped**, so `(green - swir)/(green + swir)` falls out directly; the raster path in `confidence.py` calls `_compute_index_raster(green, swir)` in the normal order and then **negates** the result to flip the sign. B03 is 10 m, B11 is 20 m — bilinearly resampled onto the B03 grid.
 
 **Gap / when it breaks:** This is the McFeeters family, not Gao's. Tends to behave more like a "wet ground vs dry ground" index than a true canopy-water index — it works for the "irrigation health map" framing because wet soil + irrigated canopy both push it the same way, but it isn't quite what FAO/USDA literature calls NDWI for crop water stress.
 
 **Code path:**
 - Data source: STAC `B03` + `B11` from [src/jeevn/ingestion/sentinel.py](src/jeevn/ingestion/sentinel.py).
-- Transformation: [src/jeevn/remote_sensing/analysis/confidence.py](src/jeevn/remote_sensing/analysis/confidence.py) (line ~179, the green/swir branch + negate); per-date in [src/jeevn/remote_sensing/ndvi/aggregate.py](src/jeevn/remote_sensing/ndvi/aggregate.py).
+- Transformation: raster path in [src/jeevn/remote_sensing/analysis/confidence.py](src/jeevn/remote_sensing/analysis/confidence.py) (~line 184, the green/swir branch + negate); per-date in [src/jeevn/remote_sensing/ndvi/aggregate.py](src/jeevn/remote_sensing/ndvi/aggregate.py) (~line 92, the argument-swapped `ndvi_index(swir, green)` call).
 - Outstream: `ndwi_raster` in `/aoi` response; PNG via `/aoi/{id}/maps/ndwi.png`; "Irrigation Health Map" on PDF page 1 + Streamlit field-maps section.
 
 ---
@@ -139,6 +139,29 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 
 ---
 
+### A.8 Other spectral indices (defined, not wired in)
+
+**What it is:** A small library of additional vegetation/water/chlorophyll indices that exist as helper functions but are not part of the active `/aoi` pipeline.
+
+**Scientific ideal:** Each is a recognised index in its own right — EVI (Huete 2002, atmosphere- and soil-resistant greenness), SAVI (Huete 1988, soil-adjusted greenness), GCI (Gitelson, green-chlorophyll), MSI (Hunt & Rock, moisture stress). In a mature system they would be computed from masked surface reflectance and validated like NDVI/NDRE.
+
+**What this MVP does:** Defines them as pure functions but **never calls them** from the API flow:
+```
+evi  = 2.5 × (NIR − Red) / (NIR + 6·Red − 7.5·Blue + 1)
+savi = ((NIR − Red) / (NIR + Red + L)) × (1 + L)     # L = 0.5
+gci  = (NIR / Green) − 1
+msi  = SWIR / NIR
+```
+The file also carries standalone `ndvi`, `ndwi`, `ndre` helpers that duplicate the formulas actually used elsewhere (`ndvi_index` in `compute.py`, the swapped/negated NDWI in A.2, the `ndre` branch in `aggregate.py`).
+
+**Gap / when it breaks:** Dead code from the operator's point of view — none of these reach a response field or the report. Listed here so a future contributor knows they exist (and that wiring one in means adding a band fetch + raster path, not just calling the function).
+
+**Code path:**
+- Transformation: [src/jeevn/remote_sensing/analysis/signals.py](src/jeevn/remote_sensing/analysis/signals.py) (`evi`, `savi`, `gci`, `msi`, plus duplicate `ndvi`/`ndwi`/`ndre`, lines 10-42).
+- Outstream: none.
+
+---
+
 ## B. Soil
 
 ### B.1 Soil pH
@@ -173,7 +196,7 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 **Code path:**
 - Data source: bundled raster [data/static/salinity_india.tif](data/static/salinity_india.tif), built by [scripts/dev_smoke/build_salinity_clip.py](scripts/dev_smoke/build_salinity_clip.py).
 - Transformation: [src/jeevn/infrastructure/data_sources/soil.py](src/jeevn/infrastructure/data_sources/soil.py) (`SalinityRasterSampler.sample`).
-- Outstream: `aoi_data["soil"]["properties"]["ec"]` + `salinity_class` + `salinity_label`; classified into `negligible / low / moderate / high` by [src/jeevn/domain/soil/management.py](src/jeevn/domain/soil/management.py) (`_classify_salinity`); surfaces as `components.soil_management.salinity`.
+- Outstream: `aoi_data["soil"]["properties"]["ec"]` + `salinity_class` + `salinity_label`; classified by `_classify_salinity` in [src/jeevn/domain/soil/management.py](src/jeevn/domain/soil/management.py) on EC thresholds `negligible <0.25 / low 0.25-0.75 / moderate 0.75-2.25 / high ≥2.25` dS/m; surfaces as `components.soil_management.salinity`. (Note the raster class→midpoint mapping above starts at 1.0 dS/m, so a class-0 field already classifies as `moderate`.)
 
 ---
 
@@ -293,6 +316,23 @@ Grouped thematically: remote sensing → soil → terrain → weather → irriga
 - Data source: Open-Meteo archive API in [src/jeevn/infrastructure/data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py) (hourly variable).
 - Transformation: 24-hour mean in `_mean_of_last_n`, then normalisation in [src/jeevn/infrastructure/data_sources/aoi.py](src/jeevn/infrastructure/data_sources/aoi.py) (line 78-90).
 - Outstream: `properties.soil_moisture_current` (fraction) + `soil_moisture_m3m3` (raw); drives water-stress branches in [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) and surfaces in the soil-management section.
+
+---
+
+### B.10 Bulk density
+
+**What it is:** Oven-dry mass of soil per unit bulk volume, g/cm³ — needed to convert gravimetric/volumetric water contents into mm of water over a depth, and a structure/compaction indicator.
+
+**Scientific ideal:** Undisturbed core method (USDA-NRCS NSSC Method 3B) — drive a known-volume ring, oven-dry at 105 °C, divide dry mass by ring volume. Or clod/excavation methods for stony soils. Accuracy ±0.02 g/cm³.
+
+**What this MVP does:** SoilGrids v2.0 `bdod` property, depth-weighted to 0-30 cm (the SoilGrids int is divided by its `d_factor` like the other properties). Stored as `bulk_density` (rounded to 3 dp).
+
+**Gap / when it breaks:** Fetched and stored, but currently only *informational* — the soil-water-deficit ideal (E.5) references bulk density in its formula, yet the active deficit scaffold and the field-capacity normalisation (B.7) use texture-class lookups rather than this value, so `bulk_density` doesn't feed any live calculation today. SoilGrids carries ±0.1 g/cm³ uncertainty.
+
+**Code path:**
+- Data source: ISRIC SoilGrids in [src/jeevn/infrastructure/data_sources/soil.py](src/jeevn/infrastructure/data_sources/soil.py) (`bdod` branch, ~line 257).
+- Transformation: depth-weighted mean + d-factor, same as the other SoilGrids properties.
+- Outstream: `properties.bulk_density`; available to downstream calculators but not consumed by the active flow. Fallback in `pseudo_satellite.DEFAULT_SOIL_PROPERTIES`.
 
 ---
 
@@ -416,6 +456,27 @@ slope_pct = 100 × √(dz/dx² + dz/dy²)
 
 ---
 
+### D.5 Relative humidity (estimated)
+
+**What it is:** Near-surface relative humidity, % — a driver of pest/disease pressure and (indirectly) of pollination/disease yield penalties.
+
+**Scientific ideal:** Direct measurement with a capacitive RH sensor (Vaisala HMP-series) in the same Stevenson screen as the thermometer, or derived from a measured dewpoint. WMO accuracy spec: ±3% RH. Open-Meteo also exposes a modelled `relative_humidity_2m` that would be a far better source than the proxy below.
+
+**What this MVP does:** **No RH is fetched.** It is *estimated* on the fly from daily temperature and rainfall:
+```
+humidity = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)
+```
+A flat formula: wetter/cooler days read higher. The same expression is duplicated in two consumers rather than computed once.
+
+**Gap / when it breaks:** Crude proxy with no physical basis — a hot dry day with no rain floors near 40%, a cool wet day saturates at 100%. Drives the 25% humidity weight in the pest/disease score and the "high humidity in flowering/fruit_set → 10% pest/disease" yield penalty, so error here propagates into both. The real fix is one line: read Open-Meteo `relative_humidity_2m`.
+
+**Code path:**
+- Data source: none (derived from D.1 temp + D.2 rain).
+- Transformation: [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (~line 110) and again in [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_calculate_reduction_factors`, ~line 150).
+- Outstream: feeds H.1 (`humidity_impact`) and I.1 (pest/disease reduction factor); surfaces as `environmental_conditions.humidity`.
+
+---
+
 ## E. Irrigation Math
 
 ### E.1 ET0 — Reference Evapotranspiration
@@ -490,7 +551,7 @@ With RVI itself being NDVI × 1.08 (see A.4), this *is* the "Kc-from-NDVI" idea 
 **Code path:**
 - Data source: per-day ETc (E.1/E.2) + per-day forecast rain (D.2) from `aoi_data["forecast"]`.
 - Transformation: [src/jeevn/domain/irrigation/scheduler.py](src/jeevn/domain/irrigation/scheduler.py) (`generate_schedule`).
-- Outstream: `components.irrigation_schedule.daily_schedule[]` — 7 rows of drip/basin/sprinkler mm + real rainfall + rain% + total_water_mm + irrigation_days + forecast_rainfall_mm. PDF page 2 + Streamlit irrigation section.
+- Outstream: `components.irrigation_schedule.daily_schedule[]` — 7 rows of drip/basin/sprinkler mm + real rainfall + rain% + an `evapotransp` demand label (`"High"` when that day's ETc > 6 mm, else `"Moderate"`); plus header-level total_water_mm + irrigation_days + forecast_rainfall_mm. PDF page 2 + Streamlit irrigation section.
 
 ---
 
@@ -570,7 +631,24 @@ walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ 
 **Code path:**
 - Data source: `ndvi_timeseries` from the remote-sensing pipeline.
 - Transformation: [src/jeevn/domain/growth_yield/monitoring.py](src/jeevn/domain/growth_yield/monitoring.py) (`analyze_growth_trajectory`).
-- Outstream: `components.growth_trajectory.{trend, slope, recommendation}`.
+- Outstream: `components.growth_trajectory.{trend, trend_slope, current_ndvi, ndvi_range, mean_ndvi, data_points, recommendation}` (the descriptive `current_ndvi`/`mean_ndvi`/`ndvi_range` are simple summary stats over the same series).
+
+---
+
+### F.4 Growth-stage timing assessment
+
+**What it is:** A verdict on whether the crop is *on schedule*, *ahead*, or *behind* for its current phenological stage — "On schedule" / "Early by N days (delayed development)" / "Late by N days (accelerated development)".
+
+**Scientific ideal:** Compare observed BBCH stage dates (F.1) against a GDD- or date-anchored expectation derived from the local long-term climatology for the cultivar, ideally with a confidence interval on the expected window.
+
+**What this MVP does:** Compares `days_since_sowing` against a hard-coded per-stage day-range table (apple + wheat; everything else falls back to wheat). If inside the window → "On schedule"; before it → "Early by …"; after it → "Late by …". Note the label wording is slightly counter-intuitive: being *before* the expected window is called "Early … (delayed development)" and *after* is "Late … (accelerated development)".
+
+**Gap / when it breaks:** The day-ranges are fixed calendars, not GDD-driven, so the assessment double-counts the same date-vs-observation weakness as F.1. Two-crop table. The label semantics are easy to misread.
+
+**Code path:**
+- Data source: `days_since_sowing` + the current `stage` from F.1.
+- Transformation: [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_assess_growth_stage`, line ~101, with the `stage_timing` table).
+- Outstream: `components.growth_yield.growth_stage_assessment`.
 
 ---
 
@@ -595,7 +673,7 @@ gap = max(0, adjusted_target − current)
 status = critical | moderate | adequate based on current/target ratio
 ```
 
-**Gap / when it breaks:** **Current soil levels are hard-coded, not measured.** Every parcel gets the same `N=13.65`. The system effectively recommends fertiliser based on the crop target alone, with RVI as the only parcel-specific input. This is a placeholder until a soil-test ingest lands.
+**Gap / when it breaks:** **Current soil levels are hard-coded, not measured.** Every parcel gets the same `N=13.65`. The system effectively recommends fertiliser based on the crop target alone, with RVI as the only parcel-specific input. This is a placeholder until a soil-test ingest lands. Also note the **nutrient set is crop-dependent**: the apple phenology table defines all five (N/P/K/S/Zn), but the wheat table defines only N/P/K — so S and Zn gaps are simply never computed for wheat (and for any crop that falls back to wheat).
 
 **Code path:**
 - Data source: hard-coded dict in [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) (line 27-33). Target from crop phenology in [src/jeevn/domain/crop/phenology.py](src/jeevn/domain/crop/phenology.py).
@@ -610,17 +688,34 @@ status = critical | moderate | adequate based on current/target ratio
 
 **Scientific ideal:** **4R Nutrient Stewardship** (Right source, Right rate, Right time, Right place) per IPNI: split-application of N matched to crop uptake curves; banded or fertigated P near roots; soil-test-derived rates; tissue-test mid-season adjustments. Plus 4R refinements for variable-rate based on yield-zone maps.
 
-**What this MVP does:** Per-crop branch (apple / wheat / generic) — given a per-nutrient gap, convert to product mass by nutrient %:
+**What this MVP does:** Three distinct per-crop branches, each converting a per-nutrient gap to product mass by nutrient %. **The branches do not share a formula — apple and wheat make different chemistry assumptions:**
+
+*Apple* (`_get_apple_recommendations`) — fertigation-oriented, splits P and K across a soluble + an organic source, and is the only branch that handles S and Zn:
 ```
-urea_kg = N_gap / 0.46            # Urea is 46% N
-dap_kg  = (P_gap × 0.7) / 0.46    # 70% of P from DAP, rest from Bone Meal
-sop_kg  = (K_gap × 0.7) / 0.50    # 70% of K from SOP, rest from Wood Ash
+urea_kg      = N_gap / 0.46                 # Urea 46% N
+dap_kg       = (P_gap × 0.7) / 0.46         # 70% of P from DAP (treated as 46%)…
+bone_meal_kg = (P_gap × 0.3) / 0.03         # …30% from Bone Meal (3% P)
+sop_kg       = (K_gap × 0.7) / 0.50         # 70% of K from SOP (50% K2O)…
+wood_ash_kg  = (K_gap × 0.3) / 0.05         # …30% from Wood Ash (5% K)
+bentonite_kg = S_gap  / 0.90                # Bentonite Sulphur 90% S
+zn_sulph_kg  = Zn_gap / 0.21                # Zinc Sulphate 21% Zn
++ fixed Enriched FYM (55 kg) and Vermicompost (N_gap / 0.015)
 ```
-Plus fixed cautions ("avoid foliar at peak heat", "reduce dose on saline soil").
+
+*Wheat* (`_get_wheat_recommendations`) — broadcast/top-dress, no organic split, no S/Zn, and a **different DAP and K basis** than apple:
+```
+urea_base = urea_top = (N_gap × 0.5) / 0.46  # split 50% pre-sow / 50% at tillering
+dap_kg    = P_gap / 0.20                      # DAP treated as 20% P here (vs 46% for apple)
+mop_kg    = K_gap / 0.60                      # MOP (Muriate of Potash), not SOP
+```
+
+*Generic* (`_get_generic_recommendations`) — fallback for any other crop: one "Generic source" line per nutrient at `quantity = gap` (no product chemistry at all).
+
+**Gap / when it breaks:** The same P gap yields different DAP masses for apple vs wheat because the two branches assume different DAP grades (46% vs 20%) — an internal inconsistency, not a calibrated agronomic choice. Wheat's missing S/Zn ties back to G.1's crop-dependent nutrient set.
 
 **Code path:**
-- Data source: gap from G.1.
-- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations`, `_get_wheat_recommendations`).
+- Data source: gap from G.1; branch selected by crop name (anything not apple/wheat → generic).
+- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations` line ~76, `_get_wheat_recommendations` line ~175, `_get_generic_recommendations` line ~227).
 - Outstream: `recommended_products[]` → fertilizer table + recommended-products expander on PDF page 5.
 
 ---
@@ -692,7 +787,9 @@ where `yield_potential` comes from `phenology.CROP_DATA[crop]["yield_potential_k
 - Flowering + RVI<0.60 → 5% poor pollination
 - Apple + RVI<0.70 → 5% reduced canopy
 
-**Gap / when it breaks:** Multiplicative penalties on a fixed potential — no representation of the *timing* of stress (a 5-day water stress at flowering vs at maturity matters very differently). Yield potential is a single number per crop, not cultivar/zone-specific.
+From `adjusted_yield` the projection also derives three headline numbers: `yield_potential_total_kg = yield_potential × area`, `total_yield_kg = adjusted_yield × area`, and `potential_loss_percent = (yield_potential − adjusted_yield) / yield_potential × 100`. Separately, `harvest_status` (`_determine_harvest_status`) maps the current stage + `days_since_sowing` against a per-crop maturity window (apple 275-305 d, wheat 125-135 d, else 100-150 d) to `ready / incomplete / overripe`.
+
+**Gap / when it breaks:** Multiplicative penalties on a fixed potential — no representation of the *timing* of stress (a 5-day water stress at flowering vs at maturity matters very differently). Yield potential is a single number per crop, not cultivar/zone-specific. `harvest_status` is purely calendar-driven (same date-vs-observation weakness as F.1/F.4), so it can read "ready" on a crop that is actually behind.
 
 **Code path:**
 - Data source: NDVI/RVI from advisory, soil moisture from soil composer, weather from Open-Meteo, crop from phenology.
@@ -799,7 +896,7 @@ stress = clip(1 - (ratio - 0.2)/0.6, 0.05, 0.95)
 
 **Scientific ideal:** Hyperspectral imaging from UAVs (Photochemical Reflectance Index, Anthocyanin Reflectance Index) — disease-specific spectral signatures, validated against pathology lab cultures.
 
-**What this MVP does:** Looks for a rolling 2-window decline > 0.2 NDVI in the timeseries. Returns `disease_detected: bool` + a `risk_score = clip(max_decline / 0.3, 0, 1)` with a `0.02-0.08` jitter floor.
+**What this MVP does:** Walks the timeseries and compares each point with the one **two steps later** (`ndvi[i]` vs `ndvi[i+2]`, not a rolling/averaged window) — a decline greater than 0.2 anywhere flags disease. Returns `disease_detected: bool` + a `risk_score = clip(max_decline / 0.3, 0, 1)` with a `0.02-0.08` jitter floor.
 
 **Gap / when it breaks:** A pure NDVI-decline signal — can't distinguish disease from drought, frost, or harvest. The `np.random.uniform(0.02, 0.08)` jitter floor makes the output non-deterministic, which is a quirk worth flagging.
 
