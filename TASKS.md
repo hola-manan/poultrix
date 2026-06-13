@@ -326,6 +326,22 @@ todo-tracking an agent uses.
 
 *(most recent ~10 — older entries can be trimmed)*
 
+### Grape crop database (MVP-plan Part 2 #3)
+- **Resolved:** 2026-06-13
+- One-liner: Grape is now a first-class crop, no longer a wheat shadow.
+  Added `CROP_DATA["grape"]` to `crop/phenology.py` (t_base 10 °C; 8 stages
+  budburst→harvest anchored to forward/fruit pruning, ~155 d; Kc per stage;
+  K-weighted N/P/K/S/Zn targets; yield potential 10000 kg/acre), grape rows
+  in `growth_yield/projection.py` (`_assess_growth_stage` timing +
+  `_determine_harvest_status`), a dedicated `_get_grape_recommendations`
+  fertilizer branch (SOP not MOP — chloride-sensitive; foliar Zn; S top-up
+  beyond SOP), and fixed the grape mealybug `stage_susceptibility` to real
+  grape stages. Verified end-to-end: a grape AOI projects against grape
+  stages/yield/harvest, not wheat. New tests: `test_phenology.py` (5),
+  `test_fertilizer.py` (3). Docs synced (PROCESSES F.1/F.4/G.1/G.2/I.1,
+  domain OVERVIEW). With this, the H.2/H.3 grape disease models fire against
+  real grape phenology rather than the wheat fallback.
+
 ### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
 - **Resolved:** 2026-06-13
 - One-liner: `weather.py` now fetches Open-Meteo hourly `temperature_2m`,

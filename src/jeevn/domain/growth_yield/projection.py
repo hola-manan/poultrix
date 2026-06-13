@@ -117,6 +117,16 @@ class YieldGrowthCalculator:
                 "milkstage": (90, 110),
                 "dough": (110, 125),
                 "mature": (125, 135),
+            },
+            "grape": {
+                "budburst": (0, 10),
+                "shoot_growth": (10, 40),
+                "flowering": (40, 55),
+                "fruit_set": (55, 70),
+                "berry_development": (70, 105),
+                "veraison": (105, 125),
+                "ripening": (125, 145),
+                "harvest": (145, 160),
             }
         }
 
@@ -180,6 +190,7 @@ class YieldGrowthCalculator:
         harvest_stages = {
             "apple": ("mature", 275, 305),
             "wheat": ("mature", 125, 135),
+            "grape": ("harvest", 145, 160),
         }
 
         crop_info = harvest_stages.get(crop_name.lower(), ("mature", 100, 150))

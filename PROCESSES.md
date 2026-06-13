@@ -584,13 +584,13 @@ With hard-coded defaults `FC=0.25`, `WP=0.12`, `depletion_fraction=0.5`, depth=3
 
 **Scientific ideal:** **Visual scoring against the BBCH-scale** (Biologische Bundesanstalt, Bundessortenamt und CHemische Industrie) — standardised 00-99 codes per crop, scouted in the field at twice-weekly cadence. Or phenology cameras (PhenoCam network) for automated detection from canopy greenness time-series.
 
-**What this MVP does:** Days-since-sowing + GDD walk through a hard-coded per-crop stage table (only apple + wheat are populated; everything else falls back to wheat).
+**What this MVP does:** Days-since-sowing + GDD walk through a hard-coded per-crop stage table (apple, wheat, and grape are populated; everything else falls back to wheat).
 ```
 accumulated_gdd = Σ max(0, daily_temp_mean − t_base)
 walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ accumulated_gdd is "current"
 ```
 
-**Gap / when it breaks:** Date-driven, not observation-driven. Will say "flowering" on the canonical date even if the orchard is actually 10 days late. Two-crop database — anything other than apple/wheat is treated as wheat.
+**Gap / when it breaks:** Date-driven, not observation-driven. Will say "flowering" on the canonical date even if the orchard is actually 10 days late. Three-crop database (apple/wheat/grape) — anything else is treated as wheat. The grape calendar is anchored to forward (fruit) pruning, not sowing, so `days_since_sowing` must be days-since-pruning for grape.
 
 **Code path:**
 - Data source: sowing date (user input or default), temp_mean series from Open-Meteo, crop_name.
@@ -637,7 +637,7 @@ walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ 
 
 **Scientific ideal:** Compare observed BBCH stage dates (F.1) against a GDD- or date-anchored expectation derived from the local long-term climatology for the cultivar, ideally with a confidence interval on the expected window.
 
-**What this MVP does:** Compares `days_since_sowing` against a hard-coded per-stage day-range table (apple + wheat; everything else falls back to wheat). If inside the window → "On schedule"; before it → "Early by …"; after it → "Late by …". Note the label wording is slightly counter-intuitive: being *before* the expected window is called "Early … (delayed development)" and *after* is "Late … (accelerated development)".
+**What this MVP does:** Compares `days_since_sowing` against a hard-coded per-stage day-range table (apple, wheat, grape; everything else falls back to wheat). If inside the window → "On schedule"; before it → "Early by …"; after it → "Late by …". Note the label wording is slightly counter-intuitive: being *before* the expected window is called "Early … (delayed development)" and *after* is "Late … (accelerated development)".
 
 **Gap / when it breaks:** The day-ranges are fixed calendars, not GDD-driven, so the assessment double-counts the same date-vs-observation weakness as F.1. Two-crop table. The label semantics are easy to misread.
 
@@ -669,7 +669,7 @@ gap = max(0, adjusted_target − current)
 status = critical | moderate | adequate based on current/target ratio
 ```
 
-**Gap / when it breaks:** **Current soil levels are hard-coded, not measured.** Every parcel gets the same `N=13.65`. The system effectively recommends fertiliser based on the crop target alone, with RVI as the only parcel-specific input. This is a placeholder until a soil-test ingest lands. Also note the **nutrient set is crop-dependent**: the apple phenology table defines all five (N/P/K/S/Zn), but the wheat table defines only N/P/K — so S and Zn gaps are simply never computed for wheat (and for any crop that falls back to wheat).
+**Gap / when it breaks:** **Current soil levels are hard-coded, not measured.** Every parcel gets the same `N=13.65`. The system effectively recommends fertiliser based on the crop target alone, with RVI as the only parcel-specific input. This is a placeholder until a soil-test ingest lands. Also note the **nutrient set is crop-dependent**: the apple and grape phenology tables define all five (N/P/K/S/Zn), but the wheat table defines only N/P/K — so S and Zn gaps are simply never computed for wheat (and for any crop that falls back to wheat).
 
 **Code path:**
 - Data source: hard-coded dict in [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) (line 27-33). Target from crop phenology in [src/jeevn/domain/crop/phenology.py](src/jeevn/domain/crop/phenology.py).
@@ -684,7 +684,7 @@ status = critical | moderate | adequate based on current/target ratio
 
 **Scientific ideal:** **4R Nutrient Stewardship** (Right source, Right rate, Right time, Right place) per IPNI: split-application of N matched to crop uptake curves; banded or fertigated P near roots; soil-test-derived rates; tissue-test mid-season adjustments. Plus 4R refinements for variable-rate based on yield-zone maps.
 
-**What this MVP does:** Three distinct per-crop branches, each converting a per-nutrient gap to product mass by nutrient %. **The branches do not share a formula — apple and wheat make different chemistry assumptions:**
+**What this MVP does:** Four distinct per-crop branches (apple, wheat, grape, generic), each converting a per-nutrient gap to product mass by nutrient %. **The branches do not share a formula — they make different chemistry assumptions:**
 
 *Apple* (`_get_apple_recommendations`) — fertigation-oriented, splits P and K across a soluble + an organic source, and is the only branch that handles S and Zn:
 ```
@@ -705,13 +705,15 @@ dap_kg    = P_gap / 0.20                      # DAP treated as 20% P here (vs 46
 mop_kg    = K_gap / 0.60                      # MOP (Muriate of Potash), not SOP
 ```
 
+*Grape* (`_get_grape_recommendations`) — fully fertigated, handles all five nutrients like apple but K-weighted to berry-development/veraison; **uses SOP not MOP** (grapes are chloride-sensitive) and delivers Zn **foliar** (grapes are prone to little-leaf Zn deficiency). Tops up S only beyond what SOP's 18% S already supplies.
+
 *Generic* (`_get_generic_recommendations`) — fallback for any other crop: one "Generic source" line per nutrient at `quantity = gap` (no product chemistry at all).
 
 **Gap / when it breaks:** The same P gap yields different DAP masses for apple vs wheat because the two branches assume different DAP grades (46% vs 20%) — an internal inconsistency, not a calibrated agronomic choice. Wheat's missing S/Zn ties back to G.1's crop-dependent nutrient set.
 
 **Code path:**
-- Data source: gap from G.1; branch selected by crop name (anything not apple/wheat → generic).
-- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations` line ~76, `_get_wheat_recommendations` line ~175, `_get_generic_recommendations` line ~227).
+- Data source: gap from G.1; branch selected by crop name (anything not apple/wheat/grape → generic).
+- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations`, `_get_wheat_recommendations`, `_get_grape_recommendations`, `_get_generic_recommendations`).
 - Outstream: `recommended_products[]` → fertilizer table + recommended-products expander on PDF page 5.
 
 ---
@@ -809,14 +811,14 @@ Risk: `high ≥ 60, moderate ≥ 35`. RSM is constant 0.72 (see A.5), so the fir
 ```
 adjusted_yield = yield_potential × ∏(1 − reduction_i/100)
 ```
-where `yield_potential` comes from `phenology.CROP_DATA[crop]["yield_potential_kg_per_acre"]` (apple: 2500, wheat: 3650), and `reduction_i` is a fixed-percentage hit from each limiting factor detected:
+where `yield_potential` comes from `phenology.CROP_DATA[crop]["yield_potential_kg_per_acre"]` (apple: 2500, wheat: 3650, grape: 10000), and `reduction_i` is a fixed-percentage hit from each limiting factor detected:
 - RVI<0.60 → 15% nutrient deficiency; <0.70 → 8%
 - High humidity in flowering/fruit_set → 10% pest/disease
 - Soil moisture < 0.50 → 20% water stress; <0.60 → 5%
 - Flowering + RVI<0.60 → 5% poor pollination
 - Apple + RVI<0.70 → 5% reduced canopy
 
-From `adjusted_yield` the projection also derives three headline numbers: `yield_potential_total_kg = yield_potential × area`, `total_yield_kg = adjusted_yield × area`, and `potential_loss_percent = (yield_potential − adjusted_yield) / yield_potential × 100`. Separately, `harvest_status` (`_determine_harvest_status`) maps the current stage + `days_since_sowing` against a per-crop maturity window (apple 275-305 d, wheat 125-135 d, else 100-150 d) to `ready / incomplete / overripe`.
+From `adjusted_yield` the projection also derives three headline numbers: `yield_potential_total_kg = yield_potential × area`, `total_yield_kg = adjusted_yield × area`, and `potential_loss_percent = (yield_potential − adjusted_yield) / yield_potential × 100`. Separately, `harvest_status` (`_determine_harvest_status`) maps the current stage + `days_since_sowing` against a per-crop maturity window (apple 275-305 d, wheat 125-135 d, grape 145-160 d, else 100-150 d) to `ready / incomplete / overripe`.
 
 **Gap / when it breaks:** Multiplicative penalties on a fixed potential — no representation of the *timing* of stress (a 5-day water stress at flowering vs at maturity matters very differently). Yield potential is a single number per crop, not cultivar/zone-specific. `harvest_status` is purely calendar-driven (same date-vs-observation weakness as F.1/F.4), so it can read "ready" on a crop that is actually behind.
 

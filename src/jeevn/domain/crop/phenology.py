@@ -51,6 +51,35 @@ class CropPhenologyDatabase:
             },
             "yield_potential_kg_per_acre": 3650,
             "maturity_days": 120,
+        },
+        # Grape (table/wine, Nashik-Sangli belt) — the pilot crop. The season
+        # is modelled from forward (fruit) pruning (~Oct) through harvest
+        # (~Feb-Mar), ~155 days. t_base 10 deg C is the standard Vitis
+        # vinifera GDD base. Stages map to the disease/yield logic: `flowering`
+        # and `fruit_set` drive the humidity/pollination branches, `harvest`
+        # anchors harvest-status. Grapes are heavy K feeders, hence the
+        # K-weighted nutrient targets.
+        "grape": {
+            "t_base": 10.0,
+            "growth_stages": {
+                "budburst": {"days": 10, "gdd": 150, "kc": 0.3, "ndvi_range": (0.20, 0.35)},
+                "shoot_growth": {"days": 30, "gdd": 450, "kc": 0.5, "ndvi_range": (0.35, 0.55)},
+                "flowering": {"days": 15, "gdd": 220, "kc": 0.7, "ndvi_range": (0.55, 0.70)},
+                "fruit_set": {"days": 15, "gdd": 220, "kc": 0.8, "ndvi_range": (0.60, 0.75)},
+                "berry_development": {"days": 35, "gdd": 520, "kc": 0.85, "ndvi_range": (0.65, 0.80)},
+                "veraison": {"days": 20, "gdd": 300, "kc": 0.8, "ndvi_range": (0.60, 0.75)},
+                "ripening": {"days": 20, "gdd": 300, "kc": 0.7, "ndvi_range": (0.55, 0.70)},
+                "harvest": {"days": 10, "gdd": 150, "kc": 0.6, "ndvi_range": (0.50, 0.65)},
+            },
+            "nutrient_requirements_kg_per_acre": {
+                "N": {"low": 36.0, "optimal": 50.0, "high": 64.0},
+                "P": {"low": 16.0, "optimal": 24.0, "high": 32.0},
+                "K": {"low": 60.0, "optimal": 90.0, "high": 120.0},
+                "S": {"low": 8.0, "optimal": 14.0, "high": 20.0},
+                "Zn": {"low": 0.9, "optimal": 1.8, "high": 2.7},
+            },
+            "yield_potential_kg_per_acre": 10000,
+            "maturity_days": 155,
         }
     }
 

@@ -50,6 +50,10 @@ class FertilizerScheduler:
             schedule["recommended_products"] = FertilizerScheduler._get_wheat_recommendations(
                 nutrient_requirements, area_acres
             )
+        elif crop_name == "grape":
+            schedule["recommended_products"] = FertilizerScheduler._get_grape_recommendations(
+                nutrient_requirements, area_acres
+            )
         else:
             schedule["recommended_products"] = FertilizerScheduler._get_generic_recommendations(
                 nutrient_requirements, area_acres
@@ -221,6 +225,93 @@ class FertilizerScheduler:
                 "timing": "Pre-sowing",
                 "notes": "For K-deficient soils"
             })
+
+        return recommendations
+
+    @staticmethod
+    def _get_grape_recommendations(nutrient_requirements: Dict[str, Any],
+                                   area_acres: float) -> List[Dict[str, Any]]:
+        """Grape (Nashik table/wine) — fully fertigated. Grapes are heavy K
+        feeders and chloride-sensitive, so K is supplied as SOP (Sulphate of
+        Potash), never MOP, and weighted to the berry-development/veraison
+        window for berry size and sugar. Zn is supplied foliar (grapes are
+        prone to little-leaf Zn deficiency)."""
+        recommendations = []
+
+        n_gap = nutrient_requirements.get("N", {}).get("gap_kg_per_acre", 0)
+        p_gap = nutrient_requirements.get("P", {}).get("gap_kg_per_acre", 0)
+        k_gap = nutrient_requirements.get("K", {}).get("gap_kg_per_acre", 0)
+        s_gap = nutrient_requirements.get("S", {}).get("gap_kg_per_acre", 0)
+        zn_gap = nutrient_requirements.get("Zn", {}).get("gap_kg_per_acre", 0)
+
+        if n_gap > 0:
+            urea_needed = n_gap / 0.46
+            recommendations.append({
+                "product": "Urea (46% N)",
+                "quantity_kg_acre": round(urea_needed, 2),
+                "application_method": "Fertigation via drip",
+                "timing": "Split weekly, front-loaded to shoot growth; taper after veraison",
+                "notes": "Avoid excess N near veraison — it delays sugar and softens berries"
+            })
+
+        if p_gap > 0:
+            dap_needed = (p_gap * 0.7) / 0.46
+            bone_meal_needed = (p_gap * 0.3) / 0.03
+            recommendations.append({
+                "product": "DAP - Diammonium Phosphate (46% P2O5)",
+                "quantity_kg_acre": round(dap_needed, 2),
+                "application_method": "Fertigation",
+                "timing": "Concentrate around budburst and root flush",
+                "notes": "Also supplies nitrogen; highly soluble"
+            })
+            recommendations.append({
+                "product": "Bone Meal (3% P)",
+                "quantity_kg_acre": round(bone_meal_needed, 2),
+                "application_method": "Soil application in the vine row",
+                "timing": "At/after pruning",
+                "notes": "Organic slow-release P"
+            })
+
+        if k_gap > 0:
+            sop_needed = k_gap / 0.50
+            recommendations.append({
+                "product": "SOP - Sulphate of Potash (50% K2O, 18% S)",
+                "quantity_kg_acre": round(sop_needed, 2),
+                "application_method": "Fertigation (use SOP, not MOP — grapes are chloride-sensitive)",
+                "timing": "Peak dose berry development through veraison",
+                "notes": "Drives berry size + sugar; also covers part of the sulfur need"
+            })
+
+        # SOP already supplies S; only top up if the gap exceeds what SOP gives.
+        s_from_sop = (k_gap / 0.50) * 0.18 if k_gap > 0 else 0
+        s_topup = max(0, s_gap - s_from_sop)
+        if s_topup > 0:
+            bentonite_needed = s_topup / 0.90
+            recommendations.append({
+                "product": "Bentonite Sulphur (90% S)",
+                "quantity_kg_acre": round(bentonite_needed, 2),
+                "application_method": "Soil application",
+                "timing": "Pre-season / at pruning",
+                "notes": "Tops up sulfur beyond what SOP provides"
+            })
+
+        if zn_gap > 0:
+            zn_sulphate_needed = zn_gap / 0.21
+            recommendations.append({
+                "product": "Zinc Sulphate (21% Zn)",
+                "quantity_kg_acre": round(zn_sulphate_needed, 2),
+                "application_method": "Foliar spray (more effective than soil for grape Zn)",
+                "timing": "2-3 weeks before bloom and again post-set",
+                "notes": "Prevents little-leaf / poor berry set from Zn deficiency"
+            })
+
+        recommendations.append({
+            "product": "Enriched FYM / Compost",
+            "quantity_kg_acre": 60.0,
+            "application_method": "Soil application in the vine row",
+            "timing": "Annual, at foundation pruning",
+            "notes": "Builds organic carbon and buffers fertigation"
+        })
 
         return recommendations
 

@@ -131,7 +131,7 @@ class PestDiseaseWeedAssessor:
                     "category": "pest",
                     "temperature_range": (24, 32),
                     "humidity_impact": "moderate",
-                    "stage_susceptibility": {"fruit_set": 1.2, "fruitgrowth": 1.1},
+                    "stage_susceptibility": {"fruit_set": 1.2, "berry_development": 1.1, "veraison": 1.0},
                     "organic_solution": "Release Cryptolaemus; spot-treat with neem oil",
                     "chemical_solution": "Buprofezin (avoid during harvest pre-interval)"
                 }

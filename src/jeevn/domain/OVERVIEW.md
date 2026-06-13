@@ -26,7 +26,7 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ### [`crop/phenology.py`](crop/phenology.py)
 `CropPhenologyDatabase` — class-attribute lookup table keyed by crop name.
 
-- **`CROP_DATA`** — currently has `"apple"` and `"wheat"` (anything else falls back to wheat). For each crop:
+- **`CROP_DATA`** — has `"apple"`, `"wheat"`, and `"grape"` (the pilot crop; anything else falls back to wheat). The grape calendar is anchored to forward/fruit pruning, not sowing, so `days_since_sowing` is days-since-pruning for grape. For each crop:
   - `t_base` (°C) — base temperature for GDD accumulation.
   - `growth_stages` — ordered dict of `{stage_name: {days, gdd, kc, ndvi_range}}`.
   - `nutrient_requirements_kg_per_acre` — per-nutrient `{low, optimal, high}` targets.
