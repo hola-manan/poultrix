@@ -456,24 +456,20 @@ slope_pct = 100 × √(dz/dx² + dz/dy²)
 
 ---
 
-### D.5 Relative humidity (estimated)
+### D.5 Relative humidity
 
 **What it is:** Near-surface relative humidity, % — a driver of pest/disease pressure and (indirectly) of pollination/disease yield penalties.
 
-**Scientific ideal:** Direct measurement with a capacitive RH sensor (Vaisala HMP-series) in the same Stevenson screen as the thermometer, or derived from a measured dewpoint. WMO accuracy spec: ±3% RH. Open-Meteo also exposes a modelled `relative_humidity_2m` that would be a far better source than the proxy below.
+**Scientific ideal:** Direct measurement with a capacitive RH sensor (Vaisala HMP-series) in the same Stevenson screen as the thermometer, or derived from a measured dewpoint. WMO accuracy spec: ±3% RH.
 
-**What this MVP does:** **No RH is fetched.** It is *estimated* on the fly from daily temperature and rainfall:
-```
-humidity = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)
-```
-A flat formula: wetter/cooler days read higher. The same expression is duplicated in two consumers rather than computed once.
+**What this MVP does:** **Real, where available.** The weather adapter now fetches Open-Meteo hourly `relative_humidity_2m` and surfaces a last-24-hour mean as `daily.relative_humidity_mean` (m³/m³ is the soil-moisture analogue; RH is %). The pest/disease model and the yield-reduction model both consume that measured value. Only when the feed has no RH (fabricated-weather fallback) do they revert to the legacy proxy `humidity = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)`, and the output is flagged `humidity_estimated: true`.
 
-**Gap / when it breaks:** Crude proxy with no physical basis — a hot dry day with no rain floors near 40%, a cool wet day saturates at 100%. Drives the 25% humidity weight in the pest/disease score and the "high humidity in flowering/fruit_set → 10% pest/disease" yield penalty, so error here propagates into both. The real fix is one line: read Open-Meteo `relative_humidity_2m`.
+**Gap / when it breaks:** Open-Meteo RH is modelled (ERA5/ICON, ~9–25 km in India), not an on-site sensor, and is a 2 m air value — it does not capture in-canopy microclimate (the limitation the grape downy-mildew model is explicitly hedged against; see H.3). The proxy fallback remains crude (no physical basis) but now fires only when the whole weather section is already flagged fabricated.
 
 **Code path:**
-- Data source: none (derived from D.1 temp + D.2 rain).
-- Transformation: [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (~line 110) and again in [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_calculate_reduction_factors`, ~line 150).
-- Outstream: feeds H.1 (`humidity_impact`) and I.1 (pest/disease reduction factor); surfaces as `environmental_conditions.humidity`.
+- Data source: Open-Meteo hourly `relative_humidity_2m` in [src/jeevn/infrastructure/data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py) (archive + forecast); 24-h mean via `_mean_of_last_n`.
+- Transformation: real-vs-proxy selection in [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`assess_pest_disease_risk`) and [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_calculate_reduction_factors`).
+- Outstream: feeds H.1/H.2/H.3 and I.1; surfaces as `environmental_conditions.humidity_estimate` + `humidity_estimated` (the UI/PDF label "Humidity" vs "Humidity (est.)" off the flag).
 
 ---
 
@@ -728,27 +724,60 @@ mop_kg    = K_gap / 0.60                      # MOP (Muriate of Potash), not SOP
 
 **Scientific ideal:** **Degree-day pest-forecasting models** (e.g. Welch et al. for codling moth) — accumulate insect-specific GDD from biofix dates; combined with **trap counts** (pheromone traps logged 2-3× weekly) and **field scouting** (whole-plant inspection on a stratified sample). Disease forecasters layer in leaf wetness duration (e.g. Mills curves for apple scab).
 
-**What this MVP does:** Weighted 0-100 score per pest:
+**What this MVP does:** This is the **generic susceptibility heuristic** used for apple/wheat (and any crop without a dedicated model). Grape powdery/downy mildew are no longer scored here — they have published weather-driven models in H.2/H.3. The heuristic is a weighted 0-100 score per pest:
 ```
-score = 30% × temp_suitability(temp_mean, temp_range_for_pest)
-      + 25% × humidity_impact(estimated_humidity, pest.humidity_preference)
-      + 25% × rvi_risk_factor(rvi)   # per-pest lambda
-      + 20% × stage_susceptibility[current_stage]
+score = 40% × temp_suitability(temp_mean, temp_range_for_pest)
+      + 35% × humidity_impact(humidity, pest.humidity_preference)
+      + 25% × stage_susceptibility[current_stage]
 ```
-With humidity itself *estimated* from `min(100, 40 + rainfall×2 + (30 − temp_mean)×2)` since we have no direct RH source.
-
 Risk levels: `high ≥ 70, moderate ≥ 40, low < 40`.
 
-**Gap / when it breaks:** No degree-day biofix accumulation, no trap counts, no leaf-wetness. Humidity is a single-formula proxy. Pest database has only 4 apple and 1 wheat entries.
+**Two changes from the original heuristic:** (1) **RVI was dropped** — canopy vigour previously contributed 25% of disease risk, which is agronomically unjustified; the remaining temp/humidity/stage weights were rescaled (40/35/25). (2) **Humidity is now the real measured RH** (D.5) when the feed provides it; the `40 + rainfall×2…` proxy is only the fabricated-weather fallback (flagged `humidity_estimated`).
+
+**Gap / when it breaks:** Still a static susceptibility heuristic — no degree-day biofix, no trap counts, no leaf-wetness, no forward forecast window. Pest database has 4 apple, 1 wheat, and 3 grape entries (one of which, the mealybug, uses this heuristic; the two mildews use H.2/H.3).
 
 **Code path:**
-- Data source: weather (D.1/D.2), ndvi_data (RVI), growth_stage.
+- Data source: weather (D.1/D.2/D.5), growth_stage. (RVI no longer read here.)
 - Transformation: [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`_calculate_pest_disease_risk` + the `PEST_DATABASE` dict).
 - Outstream: `components.pest_disease_weed.pests_diseases[].{name, risk_percent, risk_level, organic_solution, chemical_solution}` — PDF page 4 + Streamlit pest section.
 
 ---
 
-### H.2 Weed risk score
+### H.2 Powdery mildew — Gubler-Thomas index (grape)
+
+**What it is:** A confident, weather-driven spray-window risk for grape powdery mildew (*Erysiphe necator*).
+
+**Scientific ideal:** The **UC Davis Gubler-Thomas Risk Index** (a peer-reviewed model) — powdery mildew is temperature-driven (rain suppresses it), so a published hourly-temperature model needs no leaf-wetness or microclimate sensor. This is the disease where a regional 9–11 km grid is genuinely adequate at block scale (see the go/no-go in the plan history).
+
+**What this MVP does:** Faithful Gubler-Thomas, computed from Open-Meteo **hourly temperature**: a day *qualifies* if it has ≥6 continuous hours in 21–30 °C; 3 consecutive qualifying days initiate the index at 60; thereafter +20 per qualifying day, −10 per non-qualifying day, additional −10 on any day reaching ≥35 °C; index clamped 0–100. Maps to `high ≥ 60 (14-day spray), moderate ≥ 30 (17-day), low (21-day)`. Prefers the forward forecast hourly series (actionable this-week window), falls back to recent archive.
+
+**Gap / when it breaks:** Open-Meteo temperature is modelled, not on-site; the index assumes the published thresholds without local calibration; omitted entirely (not fabricated) when no hourly feed is available.
+
+**Code path:**
+- Data source: Open-Meteo hourly `temperature_2m` (forecast preferred) via [src/jeevn/infrastructure/data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py).
+- Transformation: [src/jeevn/domain/crop_health/disease_models.py](src/jeevn/domain/crop_health/disease_models.py) (`gubler_powdery_mildew_index`); dispatched from `assessment.py` (`_assess_model_disease`) for `PEST_DATABASE["grape"]` entries flagged `model: "gubler_powdery"`.
+- Outstream: `pests_diseases[]` entry with `{model, risk_percent (=index), risk_level, spray_interval_days, rationale}`.
+
+---
+
+### H.3 Downy mildew — wet-period flag (grape, hedged)
+
+**What it is:** A deliberately **hedged** "conditions favorable — scout/confirm" flag for grape downy mildew (*Plasmopara viticola*), never a direct spray instruction.
+
+**Scientific ideal:** Downy mildew is **leaf-wetness-driven** (sporulation/infection need free water or ≥95% RH at 13–30 °C). Leaf wetness is a *microclimate* variable; the gold-standard input is an in-canopy leaf-wetness sensor feeding a mechanistic model (Goidanich/EPI/DMCast). Open-Meteo has no leaf-wetness variable and Indian RH/rain are only ~9–25 km — so a regional feed can only *approximate* this (the explicit limitation from the go/no-go).
+
+**What this MVP does:** From Open-Meteo hourly temp/RH/precip: detect the longest consecutive **wet period** (RH ≥ 90% or precip > 0.2 mm/h) with temperature in the 13–30 °C infection band; flag favorable if that run ≥ 4 h, or if a day meets the **3-10 primary-infection rule** (≥10 mm rain at ≥10 °C, shoots ≥10 cm when known). Risk `high` for a long optimal wet period or a primary-rule day, else `moderate`/`low`. Every output carries `confidence: "regional-proxy"` and scout/confirm language.
+
+**Gap / when it breaks:** RH is a *proxy* for leaf wetness, not a measurement — this is precisely where on-farm IoT sensors (the incumbents' moat) beat satellite + regional weather. The flag can cry-wolf (regional rain that missed the block) or miss local dew events. Treated as advisory-only; omitted when no hourly feed.
+
+**Code path:**
+- Data source: Open-Meteo hourly `temperature_2m` / `relative_humidity_2m` / `precipitation` (forecast preferred).
+- Transformation: [src/jeevn/domain/crop_health/disease_models.py](src/jeevn/domain/crop_health/disease_models.py) (`downy_mildew_wet_period_risk`); dispatched for `PEST_DATABASE["grape"]` entries flagged `model: "downy_wet_period"`.
+- Outstream: `pests_diseases[]` entry with `{model, risk_percent, risk_level, favorable, confidence, rationale}`.
+
+---
+
+### H.4 Weed risk score
 
 **What it is:** Likelihood of weed pressure during the current period.
 

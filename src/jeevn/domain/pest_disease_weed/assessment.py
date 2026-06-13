@@ -2,7 +2,17 @@
 Pest, disease, and weed risk assessment based on environmental conditions
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+from jeevn.domain.crop_health.disease_models import (
+    gubler_powdery_mildew_index,
+    downy_mildew_wet_period_risk,
+)
+
+# Map a downy-mildew categorical risk level to a representative percentage so
+# it can share the report's numeric `risk_percent` column. The hedged
+# rationale + confidence travel alongside as separate fields.
+_DOWNY_LEVEL_TO_PCT = {"high": 75, "moderate": 50, "low": 20}
 
 
 class PestDiseaseWeedAssessor:
@@ -94,6 +104,48 @@ class PestDiseaseWeedAssessor:
                     "chemical_solution": "Fenoxaprop-ethyl"
                 }
             ]
+        },
+        # Grape — the pilot crop. Powdery + downy mildew are computed by the
+        # weather-driven models in `crop_health.disease_models` (flagged with
+        # a `model` key), NOT the generic susceptibility heuristic. See the
+        # go/no-go: powdery (Gubler-Thomas) is a confident temperature-driven
+        # alert; downy is a hedged regional wet-period flag.
+        "grape": {
+            "pests": [
+                {
+                    "name": "Powdery Mildew",
+                    "category": "disease",
+                    "model": "gubler_powdery",
+                    "organic_solution": "Wettable/dusting sulfur or potassium bicarbonate",
+                    "chemical_solution": "Myclobutanil or trifloxystrobin (rotate FRAC groups)"
+                },
+                {
+                    "name": "Downy Mildew",
+                    "category": "disease",
+                    "model": "downy_wet_period",
+                    "organic_solution": "Copper hydroxide applied ahead of a forecast wet window",
+                    "chemical_solution": "Metalaxyl-M + mancozeb on a confirmed infection period"
+                },
+                {
+                    "name": "Grape Mealybug",
+                    "category": "pest",
+                    "temperature_range": (24, 32),
+                    "humidity_impact": "moderate",
+                    "stage_susceptibility": {"fruit_set": 1.2, "fruitgrowth": 1.1},
+                    "organic_solution": "Release Cryptolaemus; spot-treat with neem oil",
+                    "chemical_solution": "Buprofezin (avoid during harvest pre-interval)"
+                }
+            ],
+            "weeds": [
+                {
+                    "name": "Bermuda Grass",
+                    "category": "weed",
+                    "moisture_trigger": 0.65,
+                    "rvi_impact": lambda rvi: 0.6 - (rvi * 0.3),
+                    "organic_solution": "Inter-row mowing + mulch under vines",
+                    "chemical_solution": "Glyphosate (directed, shielded spray)"
+                }
+            ]
         }
     }
 
@@ -107,7 +159,21 @@ class PestDiseaseWeedAssessor:
         temp_max = weather.get("temp_max", [35])[-1] if weather.get("temp_max") else 35
         rainfall = weather.get("rainfall", [0])[-1] if weather.get("rainfall") else 0
 
-        humidity_estimate = min(100, 40 + (rainfall * 2) + (30 - temp_mean) * 2)
+        # Real measured RH (last-24h mean from Open-Meteo) when available;
+        # otherwise fall back to the coarse legacy proxy and flag it estimated
+        # so the UI/PDF can label it honestly.
+        rh_real = weather.get("relative_humidity_mean")
+        if rh_real is not None:
+            humidity = round(float(rh_real), 0)
+            humidity_estimated = False
+        else:
+            humidity = round(min(100, 40 + (rainfall * 2) + (30 - temp_mean) * 2), 0)
+            humidity_estimated = True
+
+        # Hourly series for the weather-driven disease models — prefer the
+        # forward forecast (actionable "this week" window), fall back to the
+        # recent archive. None when neither feed has hourly data.
+        hourly = PestDiseaseWeedAssessor._select_hourly(aoi_data)
 
         rvi = ndvi_data["rvi"]
         rsm = ndvi_data["rsm"]
@@ -120,7 +186,11 @@ class PestDiseaseWeedAssessor:
                 "temperature": round(temp_mean, 1),
                 "temperature_max": round(temp_max, 1),
                 "rainfall_mm": round(rainfall, 1),
-                "humidity_estimate": round(humidity_estimate, 0),
+                # `humidity_estimate` kept as the value key for backward-compat
+                # with existing UI/PDF readers; `humidity_estimated` says
+                # whether it is the measured value or the fallback proxy.
+                "humidity_estimate": humidity,
+                "humidity_estimated": humidity_estimated,
                 "rvi": round(rvi, 2),
                 "rsm": round(rsm, 2),
                 "rsm_source": ndvi_data.get("rsm_source") or "fabricated",
@@ -137,25 +207,32 @@ class PestDiseaseWeedAssessor:
         }
 
         for pest_disease in crop_pests.get("pests", []):
-            risk_score = PestDiseaseWeedAssessor._calculate_pest_disease_risk(
-                pest_disease, temp_mean, humidity_estimate, rvi, growth_stage
-            )
+            if pest_disease.get("model"):
+                entry = PestDiseaseWeedAssessor._assess_model_disease(pest_disease, hourly)
+                if entry is None:
+                    # Hourly weather unavailable — omit the row rather than
+                    # present a fabricated risk (trust-pass principle).
+                    continue
+            else:
+                risk_score = PestDiseaseWeedAssessor._calculate_pest_disease_risk(
+                    pest_disease, temp_mean, humidity, growth_stage
+                )
+                risk_level = "high" if risk_score >= 70 else "moderate" if risk_score >= 40 else "low"
+                entry = {
+                    "name": pest_disease["name"],
+                    "category": pest_disease["category"],
+                    "risk_percent": risk_score,
+                    "risk_level": risk_level,
+                    "organic_solution": pest_disease.get("organic_solution", "Not available"),
+                    "chemical_solution": pest_disease.get("chemical_solution", "Not available")
+                }
 
-            risk_level = "high" if risk_score >= 70 else "moderate" if risk_score >= 40 else "low"
-            assessment["summary"][f"{risk_level}_risk_count"] += 1
-
-            assessment["pests_diseases"].append({
-                "name": pest_disease["name"],
-                "category": pest_disease["category"],
-                "risk_percent": risk_score,
-                "risk_level": risk_level,
-                "organic_solution": pest_disease.get("organic_solution", "Not available"),
-                "chemical_solution": pest_disease.get("chemical_solution", "Not available")
-            })
+            assessment["summary"][f"{entry['risk_level']}_risk_count"] += 1
+            assessment["pests_diseases"].append(entry)
 
         for weed in crop_pests.get("weeds", []):
             risk_score = PestDiseaseWeedAssessor._calculate_weed_risk(
-                weed, humidity_estimate, rsm, rvi, rainfall
+                weed, humidity, rsm, rvi, rainfall
             )
 
             risk_level = "high" if risk_score >= 60 else "moderate" if risk_score >= 35 else "low"
@@ -176,32 +253,98 @@ class PestDiseaseWeedAssessor:
         return assessment
 
     @staticmethod
+    def _select_hourly(aoi_data: Dict[str, Any]) -> Optional[Dict[str, List]]:
+        """Pick the hourly weather series that drives the disease models.
+
+        Prefers the forward `forecast` block (the actionable "this week"
+        window) over the historical `weather` archive. Returns None when
+        neither feed supplied hourly data (e.g. fabricated weather) — callers
+        then omit model-driven diseases rather than fabricate a risk.
+        """
+        for key in ("forecast", "weather"):
+            block = aoi_data.get(key) or {}
+            hourly = block.get("hourly") or {}
+            temps = hourly.get("temperature_2m") or []
+            if temps:
+                return {
+                    "time": hourly.get("time") or [],
+                    "temperature_2m": temps,
+                    "relative_humidity_2m": hourly.get("relative_humidity_2m") or [],
+                    "precipitation": hourly.get("precipitation") or [],
+                }
+        return None
+
+    @staticmethod
+    def _assess_model_disease(pest_disease: Dict[str, Any],
+                              hourly: Optional[Dict[str, List]]) -> Optional[Dict[str, Any]]:
+        """Build a report row for a model-driven disease (Gubler powdery /
+        downy wet-period). Returns None if no hourly data is available."""
+        if not hourly:
+            return None
+
+        model = pest_disease["model"]
+        entry = {
+            "name": pest_disease["name"],
+            "category": "disease",
+            "model": model,
+            "organic_solution": pest_disease.get("organic_solution", "Not available"),
+            "chemical_solution": pest_disease.get("chemical_solution", "Not available"),
+        }
+
+        if model == "gubler_powdery":
+            r = gubler_powdery_mildew_index(hourly["time"], hourly["temperature_2m"])
+            entry.update({
+                "risk_percent": r["index"],
+                "risk_level": r["risk_level"],
+                "spray_interval_days": r["spray_interval_days"],
+                "rationale": r["rationale"],
+            })
+            return entry
+
+        if model == "downy_wet_period":
+            r = downy_mildew_wet_period_risk(
+                hourly["time"], hourly["temperature_2m"],
+                hourly["relative_humidity_2m"], hourly["precipitation"],
+            )
+            entry.update({
+                "risk_percent": _DOWNY_LEVEL_TO_PCT[r["risk_level"]],
+                "risk_level": r["risk_level"],
+                "favorable": r["favorable"],
+                "confidence": r["confidence"],
+                "rationale": r["rationale"],
+            })
+            return entry
+
+        return None
+
+    @staticmethod
     def _calculate_pest_disease_risk(pest_disease: Dict[str, Any],
                                      temp: float, humidity: float,
-                                     rvi: float, growth_stage: str) -> float:
+                                     growth_stage: str) -> float:
+        # Canopy vigor (RVI) was previously weighted at 25% of disease risk —
+        # agronomically unjustified, so it is dropped. The remaining drivers
+        # (temperature suitability, humidity, growth-stage susceptibility) are
+        # re-weighted to keep the 0-100 scale and the 70/40 risk thresholds.
         score = 0
 
         temp_range = pest_disease.get("temperature_range", (15, 30))
         if temp_range[0] <= temp <= temp_range[1]:
             temp_score = 100 - abs(temp - (temp_range[0] + temp_range[1]) / 2) * 5
-            score += temp_score * 0.3
+            score += temp_score * 0.40
         else:
             score += 0
 
         humidity_impact = pest_disease.get("humidity_impact", "moderate")
         if humidity_impact == "high_humidity_increases_risk":
-            score += (humidity / 100) * 25
+            score += (humidity / 100) * 35
         elif humidity_impact == "low_humidity_increases_risk":
-            score += ((100 - humidity) / 100) * 25
+            score += ((100 - humidity) / 100) * 35
         else:
-            score += 12.5
-
-        rvi_factor = pest_disease.get("rvi_risk_factor", lambda x: 0.5)
-        score += rvi_factor(rvi) * 25
+            score += 17.5
 
         stage_susc = pest_disease.get("stage_susceptibility", {})
         stage_factor = stage_susc.get(growth_stage, 0.7)
-        score += stage_factor * 20
+        score += stage_factor * 25
 
         return min(100, max(0, score))
 

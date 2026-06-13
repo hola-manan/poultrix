@@ -57,28 +57,8 @@ todo-tracking an agent uses.
 
 *(known future work, not yet prioritised — move to `## Up Next` when ready)*
 
-### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
-- **Status:** pending (backlog)
-- **Why:** The pest/disease + weed risk model uses humidity as a major
-  input, but humidity is currently **estimated** by a formula
-  (`40 + rainfall×2 + (30 − temp)×2`) in
-  `domain/pest_disease_weed/assessment.py` — there is no real RH feed.
-  Open-Meteo already exposes hourly + daily relative humidity at no extra
-  cost (same API we use for temperature). This is the cheapest, highest-
-  leverage fabrication to retire and a prerequisite for any real
-  disease-infection modelling (task #16).
-- **What we want to achieve:**
-  - [ ] Weather adapter fetches real RH (hourly `relative_humidity_2m`,
-        daily max/min/mean) alongside the existing variables.
-  - [ ] The pest/disease/weed model consumes the real value; the
-        formula proxy becomes the fallback only.
-  - [ ] `environmental_conditions.humidity_estimate` is relabelled to
-        reflect that it's now measured, and flagged fabricated only when
-        Open-Meteo RH is unavailable.
-  - [ ] Doc updates per sync rule (PROCESSES H.1, infra OVERVIEW).
-
 ### 16. Pest/disease forecasting — Layer 1 (weather-driven risk models)
-- **Status:** pending (backlog, epic; benefits from #15 + #9 LST)
+- **Status:** in-progress (grape powdery/downy landed; codling-moth/scab degree-day models still pending)
 - **Why:** Today's pest/disease section is a static-lookup *susceptibility
   heuristic*, not a forecast — it scores "conditions resemble what this
   pest likes" from a 5-row table. The goal is to move it toward genuine
@@ -345,6 +325,22 @@ todo-tracking an agent uses.
 ## Done
 
 *(most recent ~10 — older entries can be trimmed)*
+
+### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
+- **Resolved:** 2026-06-13
+- One-liner: `weather.py` now fetches Open-Meteo hourly `temperature_2m`,
+  `relative_humidity_2m`, `precipitation` (alongside the existing soil
+  moisture) in both `fetch_weather` (archive) and `fetch_forecast`, and
+  surfaces `daily.relative_humidity_mean` (24-h mean) + a full `hourly`
+  block. `assess_pest_disease_risk` and `growth_yield/projection.py` consume
+  the real RH and fall back to the `40 + rainfall×2 + (30 − temp)×2` proxy
+  only on fabricated weather, flagging `environmental_conditions.humidity_estimated`;
+  UI/PDF label "Humidity" vs "Humidity (est.)" off that flag. Landed together
+  with the first slice of #16 (grape Gubler powdery + hedged downy models in
+  the new `domain/crop_health/disease_models.py`) and dropped the unjustified
+  RVI term from disease scoring. New tests: `test_disease_models.py` (10),
+  `test_assessment.py` (5), extended `test_weather.py`. Docs synced
+  (PROCESSES D.5/H.1–H.4, domain + infra OVERVIEW).
 
 ### 4. NISAR L-band soil moisture integration (SME2)
 - **Resolved:** 2026-05-29
