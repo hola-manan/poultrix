@@ -51,12 +51,17 @@ class GeographicDataFetcher:
                 (address[k] for k in _LOCALITY_KEYS if address.get(k)),
                 data.get("name") or address.get("state_district") or "Unknown",
             )
+            # District: OSM exposes it as `state_district` (common in India) or
+            # `county`. Used to key the Soil Health Card district NPK lookup.
+            district = (address.get("state_district")
+                        or address.get("county") or "")
 
             return {
                 "latitude": lat,
                 "longitude": lon,
                 "name": locality,
                 "city": address.get("city", "") or address.get("town", ""),
+                "district": district,
                 "state": address.get("state", ""),
                 "country": address.get("country", ""),
                 "display_name": data.get("display_name", ""),

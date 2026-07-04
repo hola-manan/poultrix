@@ -120,21 +120,36 @@ class WeatherDataFetcher:
             return pseudo_satellite.make_default_weather(lat, lon)
 
     @staticmethod
-    def fetch_forecast(lat: float, lon: float, days: int = 7) -> Dict[str, Any]:
-        """Fetch a forward `days`-day daily forecast from Open-Meteo's
-        forecast API (distinct from the historical archive used by
-        `fetch_weather`). Needed for rain-aware irrigation scheduling — the
-        archive API only covers past dates, so a forward schedule cannot
-        subtract future rain without this.
+    def fetch_forecast(lat: float, lon: float, days: int = 7,
+                       past_days: int = 0) -> Dict[str, Any]:
+        """Fetch a `days`-day forward forecast (plus an optional `past_days` of
+        recent history) from Open-Meteo's forecast API — distinct from the
+        historical archive used by `fetch_weather`.
+
+        Two consumers rely on this:
+          * rain-aware irrigation scheduling — the archive API only covers past
+            dates, so a forward schedule cannot subtract future rain without it;
+          * near-real-time dry-spell detection — the ERA5 *archive* lags several
+            days, so recent "consecutive dry days" must come from the forecast
+            endpoint's low-latency `past_days` window, NOT from `fetch_weather`.
+
+        When `past_days > 0`, the daily arrays include those recent days first,
+        then the forward days; the `dates`/`today_index` fields let callers split
+        the series at today.
 
         Returns:
             {
               "daily": {dates[], temp_max[], temp_min[], temp_mean[],
                         rainfall[] (mm), rain_probability[] (% 0-100),
                         solar_radiation[], wind_speed[]},
+              "today_index": int,   # index of today's date in the daily arrays
+              "past_days": int,
               "_fabricated": False,
             }
-        On failure → `pseudo_satellite.make_default_forecast(lat, lon, days)`.
+        On failure → `pseudo_satellite.make_default_forecast(lat, lon, days)`
+        (a fabricated, zero-rain placeholder flagged `_fabricated=True` — callers
+        doing dry-spell/alerting MUST treat that flag as a data gap and suppress
+        alerts rather than trust the zero-rain series).
         """
         try:
             url = "https://api.open-meteo.com/v1/forecast"
@@ -156,13 +171,21 @@ class WeatherDataFetcher:
                 "windspeed_unit": "kmh",
                 "precipitation_unit": "mm",
             }
+            if past_days > 0:
+                # Open-Meteo caps past_days at 92; clamp to be safe.
+                params["past_days"] = min(int(past_days), 92)
+
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             daily_data = response.json().get("daily", {})
 
+            dates = daily_data.get("time", [])
+            today_iso = datetime.now().strftime("%Y-%m-%d")
+            today_index = dates.index(today_iso) if today_iso in dates else past_days
+
             return {
                 "daily": {
-                    "dates": daily_data.get("time", []),
+                    "dates": dates,
                     "temp_max": daily_data.get("temperature_2m_max", []),
                     "temp_min": daily_data.get("temperature_2m_min", []),
                     "temp_mean": daily_data.get("temperature_2m_mean", []),
@@ -171,8 +194,13 @@ class WeatherDataFetcher:
                     "solar_radiation": daily_data.get("shortwave_radiation_sum", []),
                     "wind_speed": daily_data.get("windspeed_10m_max", []),
                 },
+                "today_index": today_index,
+                "past_days": past_days,
                 "_fabricated": False,
             }
         except Exception as e:
             print(f"[WARN] Weather forecast fetch failed: {e}")
-            return pseudo_satellite.make_default_forecast(lat, lon, days)
+            fallback = pseudo_satellite.make_default_forecast(lat, lon, days)
+            fallback.setdefault("today_index", 0)
+            fallback.setdefault("past_days", 0)
+            return fallback

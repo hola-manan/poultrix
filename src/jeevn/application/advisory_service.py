@@ -31,12 +31,30 @@ class AgriculturalReportGenerator:
                         sowing_date: str = None,
                         ndvi_timeseries: list = None,
                         ndvi_raster_data: Dict[str, Any] = None,
-                        location_name: str = "") -> Dict[str, Any]:
-        """Generate complete agricultural advisory report."""
+                        location_name: str = "",
+                        sensor_reading: Any = None,
+                        growth_stage_override: str = None,
+                        soil_test: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate complete agricultural advisory report.
+
+        Real-time / accuracy overrides (all optional, default to today's
+        behaviour):
+          * `sensor_reading` — a `SensorReading` from an in-field soil-moisture
+            probe; fused as the top-priority soil-moisture source.
+          * `growth_stage_override` — authoritative growth stage from the host
+            crop DB (else derived from sowing date + GDD).
+          * `soil_test` — host-DB soil test for the NPK resolver's top tier.
+        """
+        sensor_sm = getattr(sensor_reading, "soil_moisture", None)
+        sensor_is_fraction = bool(getattr(sensor_reading, "is_fraction", False))
 
         aoi_data = fetch_aoi_data(
             lat, lon, location_name,
             crop_name=crop_name, sowing_date=sowing_date,
+            sensor_soil_moisture=sensor_sm,
+            sensor_is_fraction=sensor_is_fraction,
+            soil_test=soil_test,
+            growth_stage_override=growth_stage_override,
         )
         aoi_fabricated = aoi_data.pop("_fabricated_sources", [])
         aoi_alerts = aoi_data.pop("_alerts", [])

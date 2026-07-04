@@ -31,7 +31,7 @@ from jeevn.infrastructure import pseudo_satellite
 
 # ── SoilGrids v2.0 endpoint config ─────────────────────────────────────────
 _SOILGRIDS_URL = "https://rest.isric.org/soilgrids/v2.0/properties/query"
-_PROPERTIES = ("phh2o", "soc", "bdod", "sand", "silt", "clay", "cec")
+_PROPERTIES = ("phh2o", "soc", "bdod", "sand", "silt", "clay", "cec", "nitrogen")
 _DEPTHS = ("0-5cm", "5-15cm", "15-30cm")
 _DEPTH_WEIGHTS_CM: Dict[str, int] = {"0-5cm": 5, "5-15cm": 10, "15-30cm": 15}
 _REQUEST_TIMEOUT_S = 20
@@ -215,6 +215,7 @@ class SoilGridsClient:
             silt_percent            — % mass
             clay_percent            — % mass
             cec                     — cmol(+)/kg
+            total_nitrogen_g_per_kg — total soil N (g/kg); NOT plant-available N
         Any individual key may be missing if SoilGrids returned no value at
         any depth for that property.
         """
@@ -264,6 +265,12 @@ class SoilGridsClient:
                 result["clay_percent"] = round(value, 2)
             elif name == "cec":
                 result["cec"] = round(value, 2)
+            elif name == "nitrogen":
+                # SoilGrids `nitrogen` = total soil nitrogen. After d_factor it
+                # is g/kg. Total N (not the same as plant-available N) — the NPK
+                # resolver converts it to an available-N estimate via bulk
+                # density + a mineralizable fraction, flagged low-confidence.
+                result["total_nitrogen_g_per_kg"] = round(value, 3)
 
         # Distinguish "network/parse error" from "service responded but the
         # query point sits in their land-mask exclusion zone" (i.e. urban /
