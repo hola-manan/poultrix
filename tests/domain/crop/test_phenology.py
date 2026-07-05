@@ -37,5 +37,20 @@ def test_grape_nutrient_targets_are_potassium_heavy():
     assert req["K"]["optimal"] > req["N"]["optimal"]
 
 
-def test_unknown_crop_still_falls_back_to_wheat():
-    assert DB.get_crop_data("sorghum") is DB.get_crop_data("wheat")
+def test_fao56_crop_resolves_to_generic_profile():
+    # The FAO-56 crop DB now covers many crops, so a crop like sorghum is
+    # *known* — it resolves to a generic 3-stage profile (initial/mid/late)
+    # rather than falling back to wheat. Generic profiles intentionally omit
+    # nutrient_requirements (the fertilizer step is guarded on their presence).
+    data = DB.get_crop_data("sorghum")
+    assert data is not DB.get_crop_data("wheat")
+    assert set(data["growth_stages"]) == {"initial", "mid", "late"}
+    assert "nutrient_requirements_kg_per_acre" not in data
+
+
+def test_completely_unknown_crop_gets_safe_generic_default():
+    # A crop absent from both the hardcoded set and the FAO-56 DB still returns
+    # a safe, non-crashing generic default (no wheat, no nutrient targets).
+    data = DB.get_crop_data("zzz-not-a-real-crop")
+    assert set(data["growth_stages"]) == {"initial", "mid", "late"}
+    assert "nutrient_requirements_kg_per_acre" not in data

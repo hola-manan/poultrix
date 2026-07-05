@@ -103,7 +103,15 @@ class WeatherDataFetcher:
             sm_last_24h_mean = _mean_of_last_n(sm_hourly, n=24)
 
             rh_hourly = hourly_data.get("relative_humidity_2m", []) or []
+            # 24-h mean → `daily.relative_humidity_mean` (grape disease models,
+            # growth_yield/pest RH). Also per-day means → `daily.humidity`
+            # (consumed by application/hackathon_adapter.py).
             rh_last_24h_mean = _mean_of_last_n(rh_hourly, n=24)
+            daily_rh = []
+            if rh_hourly:
+                for i in range(0, len(rh_hourly), 24):
+                    day_rh = [r for r in rh_hourly[i:i+24] if r is not None]
+                    daily_rh.append(sum(day_rh) / len(day_rh) if day_rh else None)
 
             return {
                 "location": {
@@ -119,6 +127,7 @@ class WeatherDataFetcher:
                     "rainfall": daily_data.get("precipitation_sum", []),
                     "solar_radiation": daily_data.get("shortwave_radiation_sum", []),
                     "wind_speed": daily_data.get("windspeed_10m_max", []),
+                    "humidity": daily_rh,
                     # Mean of the most-recent 24 hourly readings (m³/m³).
                     # `None` if Open-Meteo returned no soil-moisture values.
                     "soil_moisture_0_to_7cm_mean": sm_last_24h_mean,
@@ -210,6 +219,14 @@ class WeatherDataFetcher:
             daily_data = payload.get("daily", {})
             hourly_data = payload.get("hourly", {})
 
+            # Per-day RH means → daily.humidity (application/hackathon_adapter.py).
+            rh_hourly = hourly_data.get("relative_humidity_2m", []) or []
+            daily_rh = []
+            if rh_hourly:
+                for i in range(0, len(rh_hourly), 24):
+                    day_rh = [r for r in rh_hourly[i:i+24] if r is not None]
+                    daily_rh.append(sum(day_rh) / len(day_rh) if day_rh else None)
+
             dates = daily_data.get("time", [])
             today_iso = datetime.now().strftime("%Y-%m-%d")
             today_index = dates.index(today_iso) if today_iso in dates else past_days
@@ -224,6 +241,7 @@ class WeatherDataFetcher:
                     "rain_probability": daily_data.get("precipitation_probability_max", []),
                     "solar_radiation": daily_data.get("shortwave_radiation_sum", []),
                     "wind_speed": daily_data.get("windspeed_10m_max", []),
+                    "humidity": daily_rh,
                 },
                 "today_index": today_index,
                 "past_days": past_days,

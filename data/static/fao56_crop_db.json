@@ -1,0 +1,1826 @@
+{
+  "crops": {
+    "small vegetables": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "broccoli": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.4,
+      "zr_max_m": 0.6
+    },
+    "brussel sprouts": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.4,
+      "zr_max_m": 0.6
+    },
+    "cabbage": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.8
+    },
+    "carrots": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "cauliflower": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.4,
+      "zr_max_m": 0.7
+    },
+    "celery": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 1.0,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.5
+    },
+    "garlic": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.0,
+      "kc_end": 0.7,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.5
+    },
+    "lettuce": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.0,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.5
+    },
+    "onions dry": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.75,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "onions green": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.0,
+      "kc_end": 1.0,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "onions seed": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.05,
+      "kc_end": 0.8,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "spinach": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.0,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.5
+    },
+    "radish": {
+      "kc_ini": 0.7,
+      "kc_mid": 0.9,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "vegetables solanum family solanaceae": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.15,
+      "kc_end": 0.8,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "eggplant": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.05,
+      "kc_end": 0.9,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.2
+    },
+    "sweet peppers bell": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.05,
+      "kc_end": 0.9,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "tomato": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.15,
+      "kc_end": 0.8,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.5
+    },
+    "vegetables cucumber family cucurbitaceae": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.0,
+      "kc_end": 0.8,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "cantaloupe": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.85,
+      "kc_end": 0.6,
+      "zr_min_m": 0.9,
+      "zr_max_m": 1.5
+    },
+    "cucumber fresh market": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.0,
+      "kc_end": 0.75,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.2
+    },
+    "cucumber machine harvest": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.0,
+      "kc_end": 0.9,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.2
+    },
+    "pumpkin winter squash": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.0,
+      "kc_end": 0.8,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "squash zucchini": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.95,
+      "kc_end": 0.75,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "sweet melons": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.05,
+      "kc_end": 0.75,
+      "zr_min_m": 0.8,
+      "zr_max_m": 1.5
+    },
+    "watermelon": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.0,
+      "kc_end": 0.75,
+      "zr_min_m": 0.8,
+      "zr_max_m": 1.5
+    },
+    "roots tubers": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.1,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "beets table": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "cassava year 1": {
+      "kc_ini": 0.3,
+      "kc_mid": 0.8,
+      "kc_end": 0.3,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.8
+    },
+    "cassava year 2": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.1,
+      "kc_end": 0.5,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.0
+    },
+    "parsnip": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "potato": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.75,
+      "zr_min_m": 0.4,
+      "zr_max_m": 0.6
+    },
+    "sweet potato": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.65,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "turnip rutabaga": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.1,
+      "kc_end": 0.95,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "sugar beet": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.2,
+      "kc_end": 0.7,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.2
+    },
+    "legumes leguminosae": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 0.55,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "beans green": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.05,
+      "kc_end": 0.9,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.7
+    },
+    "beans dry pulses": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 0.35,
+      "zr_min_m": 0.6,
+      "zr_max_m": 0.9
+    },
+    "chickpea": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.0,
+      "kc_end": 0.35,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "faba bean broad fresh": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 1.1,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.7
+    },
+    "faba bean broad dry seed": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.3,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.7
+    },
+    "garbanzo": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 0.35,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "green gram cowpeas harvested fresh": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.05,
+      "kc_end": 0.6,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "green gram cowpeas harvested dry": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.05,
+      "kc_end": 0.35,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "groundnut peanut": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 0.6,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "lentil": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.1,
+      "kc_end": 0.3,
+      "zr_min_m": 0.6,
+      "zr_max_m": 0.8
+    },
+    "peas fresh": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 1.1,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "peas dry seed": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.3,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.0
+    },
+    "soybeans": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.5,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.3
+    },
+    "perennial vegetables winter dormancy bare mulched soil": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.0,
+      "kc_end": 0.8,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "artichokes": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.0,
+      "kc_end": 0.95,
+      "zr_min_m": 0.6,
+      "zr_max_m": 0.9
+    },
+    "asparagus": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.95,
+      "kc_end": 0.3,
+      "zr_min_m": 1.2,
+      "zr_max_m": 1.8
+    },
+    "mint": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.15,
+      "kc_end": 1.1,
+      "zr_min_m": 0.4,
+      "zr_max_m": 0.8
+    },
+    "strawberries": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.85,
+      "kc_end": 0.75,
+      "zr_min_m": 0.2,
+      "zr_max_m": 0.3
+    },
+    "fiber crops": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.0,
+      "kc_end": 0.5,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "cotton": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.17,
+      "kc_end": 0.6,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.7
+    },
+    "flax": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.1,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "sisal": {
+      "kc_ini": 0.35,
+      "kc_mid": 0.55,
+      "kc_end": 0.55,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "oil crops": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.15,
+      "kc_end": 0.35,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "castorbean ricinus": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.15,
+      "kc_end": 0.55,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "rapeseed canola": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.1,
+      "kc_end": 0.35,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "safflower": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.1,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "sesame": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.1,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "sunflower": {
+      "kc_ini": 0.35,
+      "kc_mid": 1.1,
+      "kc_end": 0.35,
+      "zr_min_m": 0.8,
+      "zr_max_m": 1.5
+    },
+    "cereals": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 0.4,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "barley": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "oats": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "spring wheat": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 0.25,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "winter wheat frozen soils": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 0.25,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "winter wheat non-frozen soils": {
+      "kc_ini": 0.7,
+      "kc_mid": 1.15,
+      "kc_end": 0.25,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "maize field grain corn 18% moisture": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.2,
+      "kc_end": 0.35,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "maize field grain corn harvested wet": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.2,
+      "kc_end": 0.6,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "maize sweet corn fresh": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 1.05,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "maize sweet corn dry": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.15,
+      "kc_end": 0.35,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "millet": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.0,
+      "kc_end": 0.3,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "sorghum grain": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.05,
+      "kc_end": 0.55,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "sorgum sweet": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.2,
+      "kc_end": 1.05,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "rice": {
+      "kc_ini": 1.05,
+      "kc_mid": 1.2,
+      "kc_end": 0.75,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "alfalfa hay averaged cutting effects": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.95,
+      "kc_end": 0.9,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "alfalfa hay individual cutting periods": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.2,
+      "kc_end": 1.15,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "alfalfa for seed": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.5,
+      "kc_end": 0.5,
+      "zr_min_m": 1.0,
+      "zr_max_m": 3.0
+    },
+    "bermuda hay averaged cutting effects": {
+      "kc_ini": 0.55,
+      "kc_mid": 1.0,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "bermuda hay spring crop for seed": {
+      "kc_ini": 0.35,
+      "kc_mid": 0.9,
+      "kc_end": 0.65,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "clover hay berseem averaged cutting effects": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.9,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "clover hay individual cutting periods": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.15,
+      "kc_end": 1.1,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "rye grass hay averaged cutting effects": {
+      "kc_ini": 0.95,
+      "kc_mid": 1.05,
+      "kc_end": 1.0,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "sudangrass hay annual averaged cutting effects": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.9,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "sudangrass individual cutting periods": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 1.1,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "grazing pasture rotated": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.9,
+      "kc_end": 0.85,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.5
+    },
+    "grazing pasture extensive": {
+      "kc_ini": 0.3,
+      "kc_mid": 0.75,
+      "kc_end": 0.75,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.5
+    },
+    "turfgrass cool season": {
+      "kc_ini": 0.9,
+      "kc_mid": 0.95,
+      "kc_end": 0.95,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "turfgrass warm season": {
+      "kc_ini": 0.8,
+      "kc_mid": 0.85,
+      "kc_end": 0.85,
+      "zr_min_m": 0.5,
+      "zr_max_m": 1.0
+    },
+    "sugarcane": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.25,
+      "kc_end": 0.75,
+      "zr_min_m": 1.2,
+      "zr_max_m": 2.0
+    },
+    "banana first year": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.1,
+      "kc_end": 1.0,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.9
+    },
+    "banana second year": {
+      "kc_ini": 1.0,
+      "kc_mid": 1.2,
+      "kc_end": 1.1,
+      "zr_min_m": 0.5,
+      "zr_max_m": 0.9
+    },
+    "cacao": {
+      "kc_ini": 1.0,
+      "kc_mid": 1.05,
+      "kc_end": 1.05,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.0
+    },
+    "coffee bare ground cover": {
+      "kc_ini": 0.9,
+      "kc_mid": 0.95,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "coffee with weeds": {
+      "kc_ini": 1.05,
+      "kc_mid": 1.1,
+      "kc_end": 1.1,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "date palms": {
+      "kc_ini": 0.9,
+      "kc_mid": 0.95,
+      "kc_end": 0.95,
+      "zr_min_m": 1.5,
+      "zr_max_m": 2.5
+    },
+    "palm trees": {
+      "kc_ini": 0.95,
+      "kc_mid": 1.0,
+      "kc_end": 1.0,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.1
+    },
+    "pineapple bare soil": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.3,
+      "kc_end": 0.3,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "pineapple with grass cover": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.5,
+      "kc_end": 0.5,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "rubber trees": {
+      "kc_ini": 0.95,
+      "kc_mid": 1.0,
+      "kc_end": 1.0,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "tea non-shaded": {
+      "kc_ini": 0.95,
+      "kc_mid": 1.0,
+      "kc_end": 1.0,
+      "zr_min_m": 0.9,
+      "zr_max_m": 1.5
+    },
+    "tea shaded": {
+      "kc_ini": 1.1,
+      "kc_mid": 1.15,
+      "kc_end": 1.15,
+      "zr_min_m": 0.9,
+      "zr_max_m": 1.5
+    },
+    "berries bushes": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.05,
+      "kc_end": 0.5,
+      "zr_min_m": 0.6,
+      "zr_max_m": 1.2
+    },
+    "grapes table raisin": {
+      "kc_ini": 0.3,
+      "kc_mid": 0.85,
+      "kc_end": 0.45,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "grapes wine": {
+      "kc_ini": 0.3,
+      "kc_mid": 0.7,
+      "kc_end": 0.45,
+      "zr_min_m": 1.0,
+      "zr_max_m": 2.0
+    },
+    "hops": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.05,
+      "kc_end": 0.85,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.2
+    },
+    "almonds no ground cover": {
+      "kc_ini": 0.4,
+      "kc_mid": 0.9,
+      "kc_end": 0.65,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apples cherries pears no ground cover killing frost": {
+      "kc_ini": 0.45,
+      "kc_mid": 0.95,
+      "kc_end": 0.7,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apples cherries pears no ground cover no frosts": {
+      "kc_ini": 0.6,
+      "kc_mid": 0.95,
+      "kc_end": 0.75,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apples cherries pears active ground cover killing frost": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.2,
+      "kc_end": 0.95,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apples cherries pears active ground cover no frosts": {
+      "kc_ini": 0.8,
+      "kc_mid": 1.2,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apricots peaches stone fruit no ground cover killing frost": {
+      "kc_ini": 0.45,
+      "kc_mid": 0.9,
+      "kc_end": 0.65,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apricots peaches stone fruit no ground cover no frosts": {
+      "kc_ini": 0.55,
+      "kc_mid": 0.9,
+      "kc_end": 0.65,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apricots peaches stone fruit active ground cover killing frost": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.15,
+      "kc_end": 0.9,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "apricots peaches stone fruit active ground cover no frosts": {
+      "kc_ini": 0.8,
+      "kc_mid": 1.15,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "avocado no ground cover": {
+      "kc_ini": 0.6,
+      "kc_mid": 0.85,
+      "kc_end": 0.75,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus no ground cover 70% canopy": {
+      "kc_ini": 0.7,
+      "kc_mid": 0.65,
+      "kc_end": 0.7,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus no ground cover 50% canopy": {
+      "kc_ini": 0.65,
+      "kc_mid": 0.6,
+      "kc_end": 0.65,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus no ground cover 20% canopy": {
+      "kc_ini": 0.5,
+      "kc_mid": 0.45,
+      "kc_end": 0.55,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus active ground cover or weeds 70% canopy": {
+      "kc_ini": 0.75,
+      "kc_mid": 0.7,
+      "kc_end": 0.75,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus active ground cover or weeds 50% canopy": {
+      "kc_ini": 0.8,
+      "kc_mid": 0.8,
+      "kc_end": 0.8,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "citrus active ground cover or weeds 20% canopy": {
+      "kc_ini": 0.85,
+      "kc_mid": 0.85,
+      "kc_end": 0.85,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "conifer trees": {
+      "kc_ini": 1.0,
+      "kc_mid": 1.0,
+      "kc_end": 1.0,
+      "zr_min_m": 1.0,
+      "zr_max_m": 1.5
+    },
+    "kiwi": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.05,
+      "kc_end": 1.05,
+      "zr_min_m": 0.7,
+      "zr_max_m": 1.3
+    },
+    "olives 40% to 60% ground coverage by canopy": {
+      "kc_ini": 0.65,
+      "kc_mid": 0.7,
+      "kc_end": 0.7,
+      "zr_min_m": 1.2,
+      "zr_max_m": 1.7
+    },
+    "pistachios no ground cover": {
+      "kc_ini": 0.4,
+      "kc_mid": 1.1,
+      "kc_end": 0.45,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "walnut orchard": {
+      "kc_ini": 0.5,
+      "kc_mid": 1.1,
+      "kc_end": 0.65,
+      "zr_min_m": 1.7,
+      "zr_max_m": 2.4
+    },
+    "cattails bulrushes killing frost": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.2,
+      "kc_end": 0.3,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "cattails bulrushes no frost": {
+      "kc_ini": 0.6,
+      "kc_mid": 1.2,
+      "kc_end": 0.6,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "short vegetation no frost": {
+      "kc_ini": 1.05,
+      "kc_mid": 1.1,
+      "kc_end": 1.1,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "reed swamp standing water": {
+      "kc_ini": 1.0,
+      "kc_mid": 1.2,
+      "kc_end": 1.0,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "reed swamp moist soil": {
+      "kc_ini": 0.9,
+      "kc_mid": 1.2,
+      "kc_end": 0.7,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "open water < 2 m depth or in subhumid climates or tropics": {
+      "kc_ini": 0.3,
+      "kc_mid": 1.05,
+      "kc_end": 1.05,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    },
+    "open water > 5 m depth clear of turbidity temperate climate": {
+      "kc_ini": 0.3,
+      "kc_mid": 0.65,
+      "kc_end": 1.25,
+      "zr_min_m": 0.3,
+      "zr_max_m": 0.6
+    }
+  },
+  "synonyms": {
+    "brussel sprouts": [
+      "crucifers"
+    ],
+    "brussel sprout": [
+      "crucifers"
+    ],
+    "red cabbage": [
+      "cabbage",
+      "crucifers"
+    ],
+    "green cabbage": [
+      "cabbage",
+      "crucifers"
+    ],
+    "purple cabbage": [
+      "cabbage",
+      "crucifers"
+    ],
+    "savoy cabbage": [
+      "cabbage",
+      "crucifers"
+    ],
+    "cabbages": [
+      "cabbage",
+      "crucifers"
+    ],
+    "elephant garlic": [
+      "garlic"
+    ],
+    "wild garlic": [
+      "garlic"
+    ],
+    "single clove garlic": [
+      "garlic"
+    ],
+    "romaine lettuce": [
+      "lettuce"
+    ],
+    "romaine": [
+      "lettuce"
+    ],
+    "onions": [
+      "onion"
+    ],
+    "red radish": [
+      "radish"
+    ],
+    "green radish": [
+      "radish"
+    ],
+    "black radish": [
+      "radish"
+    ],
+    "oilseed radish": [
+      "radish"
+    ],
+    "wild radish": [
+      "radish"
+    ],
+    "daikon": [
+      "radish"
+    ],
+    "radishes": [
+      "radish"
+    ],
+    "egg plant": [
+      "eggplant"
+    ],
+    "garden egg": [
+      "eggplant"
+    ],
+    "eggplants": [
+      "eggplant"
+    ],
+    "egg plants": [
+      "eggplant"
+    ],
+    "bell pepper": [
+      "sweet pepper"
+    ],
+    "bell peppers": [
+      "sweet pepper"
+    ],
+    "paprika": [
+      "sweet pepper"
+    ],
+    "capsicus": [
+      "sweet pepper"
+    ],
+    "capsicum": [
+      "sweet pepper"
+    ],
+    "tomatoes": [
+      "tomato"
+    ],
+    "true cantaloupe": [
+      "cantaloupe"
+    ],
+    "european cantaloupe": [
+      "cantaloupe"
+    ],
+    "american cantaloupe": [
+      "cantaloupe"
+    ],
+    "cantaloupes": [
+      "cantaloupe"
+    ],
+    "muskmelon": [
+      "cantaloupe"
+    ],
+    "rockmelon": [
+      "cantaloupe"
+    ],
+    "spanspek": [
+      "cantaloupe"
+    ],
+    "cucumbers": [
+      "cucumber"
+    ],
+    "pumpkins": [
+      "pumpkin"
+    ],
+    "winter squashes": [
+      "winter squash"
+    ],
+    "kabocha": [
+      "winter squash"
+    ],
+    "butternut squash": [
+      "winter squash"
+    ],
+    "spaghetti squash": [
+      "winter squash"
+    ],
+    "delicata squash": [
+      "winter squash"
+    ],
+    "acorn squash": [
+      "winter squash"
+    ],
+    "summer squash": [
+      "zucchini"
+    ],
+    "crookneck squash": [
+      "squash"
+    ],
+    "gem squash": [
+      "squash"
+    ],
+    "pattypan squash": [
+      "squash"
+    ],
+    "straightneck squash": [
+      "squash"
+    ],
+    "zucchinis": [
+      "zucchini"
+    ],
+    "kamokamo": [
+      "squash"
+    ],
+    "aehobak": [
+      "zucchini"
+    ],
+    "tromboncino": [
+      "squash"
+    ],
+    "zucchetta": [
+      "squash"
+    ],
+    "squashes": [
+      "squash"
+    ],
+    "melons": [
+      "melon"
+    ],
+    "watermelon": [
+      "water melon"
+    ],
+    "watermelons": [
+      "watermelon",
+      "water melon"
+    ],
+    "water melon": [
+      "watermelon"
+    ],
+    "water melons": [
+      "watermelon",
+      "water melon"
+    ],
+    "true melon": [
+      "sweet melons"
+    ],
+    "horned melon": [
+      "sweet melons"
+    ],
+    "table beets": [
+      "beets table"
+    ],
+    "table beet": [
+      "beets table"
+    ],
+    "beetroot": [
+      "beets table"
+    ],
+    "garden beets": [
+      "beets table"
+    ],
+    "garden beet": [
+      "beets table"
+    ],
+    "dinner beets": [
+      "beets table"
+    ],
+    "dinner beet": [
+      "beets table"
+    ],
+    "parsnips": [
+      "parsnip"
+    ],
+    "potatoes": [
+      "potato"
+    ],
+    "spud": [
+      "potato"
+    ],
+    "sweet potatoes": [
+      "sweet potato"
+    ],
+    "turnips": [
+      "turnip"
+    ],
+    "rutabagas": [
+      "rutabaga"
+    ],
+    "swedish turnip": [
+      "turnip"
+    ],
+    "white turnip": [
+      "turnip"
+    ],
+    "sugarbeet": [
+      "sugar beet"
+    ],
+    "sugar beets": [
+      "sugar beet",
+      "sugarbeet"
+    ],
+    "sugarbeets": [
+      "sugar beet",
+      "sugarbeet"
+    ],
+    "green beans": [
+      "beans green"
+    ],
+    "greenbeans": [
+      "beans green"
+    ],
+    "green bean": [
+      "beans green"
+    ],
+    "greenbean": [
+      "beans green"
+    ],
+    "bean": [
+      "chickpea",
+      "garbanzo"
+    ],
+    "beans": [
+      "bean",
+      "chickpea",
+      "garbanzo"
+    ],
+    "dry beans": [
+      "beans dry"
+    ],
+    "dry broad beans": [
+      "beans dry"
+    ],
+    "pulses": [
+      "beans dry"
+    ],
+    "chick pea": [
+      "chickpea"
+    ],
+    "chickpeas": [
+      "chickpea"
+    ],
+    "chick peas": [
+      "chickpea"
+    ],
+    "fababean": [
+      "faba bean"
+    ],
+    "garbanzo bean": [
+      "garbanzo"
+    ],
+    "garbanzo beans": [
+      "garbanzo"
+    ],
+    "peanuts": [
+      "peanut"
+    ],
+    "groundnuts": [
+      "groundnut"
+    ],
+    "goober": [
+      "peanut"
+    ],
+    "goober pea": [
+      "peanut"
+    ],
+    "goober peas": [
+      "peanut"
+    ],
+    "pindar": [
+      "peanut"
+    ],
+    "monkey nut": [
+      "peanut"
+    ],
+    "lentils": [
+      "lentil"
+    ],
+    "black-eyed pea": [
+      "cowpea"
+    ],
+    "black-eyed peas": [
+      "cowpea"
+    ],
+    "soy bean": [
+      "soybeans"
+    ],
+    "soy beans": [
+      "soybeans"
+    ],
+    "soya bean": [
+      "soybeans"
+    ],
+    "artichokes": [
+      "artichoke"
+    ],
+    "french artichoke": [
+      "artichoke"
+    ],
+    "globe artichoke": [
+      "artichoke"
+    ],
+    "green artichoke": [
+      "artichoke"
+    ],
+    "mentha": [
+      "mint"
+    ],
+    "strawberry": [
+      "strawberries"
+    ],
+    "garden strawberry": [
+      "strawberries"
+    ],
+    "upland cotton": [
+      "cotton"
+    ],
+    "extra-long staple cotton": [
+      "cotton"
+    ],
+    "tree cotton": [
+      "cotton"
+    ],
+    "levant cotton": [
+      "cotton"
+    ],
+    "pima cotton": [
+      "cotton"
+    ],
+    "common flax": [
+      "flax"
+    ],
+    "linseed": [
+      "flax"
+    ],
+    "castorbean": [
+      "castor bean"
+    ],
+    "castor bean": [
+      "castorbean"
+    ],
+    "castorbeans": [
+      "castorbean",
+      "castor bean"
+    ],
+    "castor beans": [
+      "castorbean",
+      "castor bean"
+    ],
+    "ricinus": [
+      "castorbean",
+      "castor bean"
+    ],
+    "castor oil plant": [
+      "castorbean",
+      "castor bean"
+    ],
+    "rape": [
+      "rapeseed"
+    ],
+    "oilseed rape": [
+      "rapeseed"
+    ],
+    "simsim": [
+      "sesame"
+    ],
+    "benne": [
+      "sesame"
+    ],
+    "gingelly": [
+      "sesame"
+    ],
+    "sunflowers": [
+      "sunflower"
+    ],
+    "common sunflowers": [
+      "sunflower"
+    ],
+    "common sunflower": [
+      "sunflower"
+    ],
+    "common oat": [
+      "oats"
+    ],
+    "common oats": [
+      "oats"
+    ],
+    "corn": [
+      "maize"
+    ],
+    "zea mays": [
+      "maize"
+    ],
+    "field corn": [
+      "maize field",
+      "maize grain"
+    ],
+    "sweet corn": [
+      "maize sweet"
+    ],
+    "millets": [
+      "millet"
+    ],
+    "finger millet": [
+      "millet"
+    ],
+    "pearl millet": [
+      "millet"
+    ],
+    "little millet": [
+      "millet"
+    ],
+    "sorghum": [
+      "sorghum"
+    ],
+    "great millet": [
+      "sorghum"
+    ],
+    "broomcorn": [
+      "sorghum"
+    ],
+    "guinea corn": [
+      "sorghum"
+    ],
+    "durra": [
+      "sorghum"
+    ],
+    "imphee": [
+      "sorghum"
+    ],
+    "jowar": [
+      "sorghum"
+    ],
+    "milo": [
+      "sorghum"
+    ],
+    "indica rice": [
+      "rice"
+    ],
+    "japonica rice": [
+      "rice"
+    ],
+    "lucerne": [
+      "alfalfa"
+    ],
+    "bermudagrass": [
+      "bermuda"
+    ],
+    "bermuda grass": [
+      "bermuda"
+    ],
+    "coastal bermudagrass": [
+      "bermuda"
+    ],
+    "berseem clover": [
+      "clover"
+    ],
+    "egyptian clover": [
+      "clover"
+    ],
+    "ryegrass": [
+      "rye grass"
+    ],
+    "sudan grass": [
+      "sudan"
+    ],
+    "sudan grass hay": [
+      "sudan"
+    ],
+    "turf grass": [
+      "turfgrass"
+    ],
+    "lawn grass": [
+      "turfgrass"
+    ],
+    "bananas": [
+      "banana"
+    ],
+    "cacao tree": [
+      "cacao"
+    ],
+    "cocoa tree": [
+      "cacao"
+    ],
+    "cocoa": [
+      "cacao"
+    ],
+    "arabica coffee": [
+      "coffee"
+    ],
+    "coffea arabica": [
+      "coffee"
+    ],
+    "coffee plant": [
+      "coffee"
+    ],
+    "dates": [
+      "date palms"
+    ],
+    "palms": [
+      "palm trees"
+    ],
+    "pineapples": [
+      "pineapple"
+    ],
+    "ananas": [
+      "pineapple"
+    ],
+    "rubber plant": [
+      "rubber trees"
+    ],
+    "sharinga tree": [
+      "rubber trees"
+    ],
+    "para rubber tree": [
+      "rubber trees"
+    ],
+    "rubber plants": [
+      "rubber trees"
+    ],
+    "tea tree": [
+      "tea"
+    ],
+    "tea plant": [
+      "tea"
+    ],
+    "tea shrub": [
+      "tea"
+    ],
+    "tea trees": [
+      "tea"
+    ],
+    "tea plants": [
+      "tea"
+    ],
+    "tea shrubs": [
+      "tea"
+    ],
+    "berry": [
+      "berries",
+      "strawberries"
+    ],
+    "berry shrub": [
+      "berries bushes"
+    ],
+    "berry bushes": [
+      "berries bushes"
+    ],
+    "berry bush": [
+      "berries bushes"
+    ],
+    "blueberries": [
+      "berries bushes"
+    ],
+    "blueberry": [
+      "berries bushes"
+    ],
+    "boysenberry": [
+      "berries bushes"
+    ],
+    "elderberry": [
+      "berries bushes"
+    ],
+    "blackberry": [
+      "berries bushes"
+    ],
+    "blackberries": [
+      "berries bushes"
+    ],
+    "raspberry": [
+      "berries bushes"
+    ],
+    "raspberries": [
+      "berries bushes"
+    ],
+    "wine grape": [
+      "grapes wine"
+    ],
+    "wine grapes": [
+      "grapes wine"
+    ],
+    "table grape": [
+      "grapes table"
+    ],
+    "table grapes": [
+      "grapes table"
+    ],
+    "raisin": [
+      "grapes table"
+    ],
+    "hops plant": [
+      "hops"
+    ],
+    "almond tree": [
+      "almonds"
+    ],
+    "almond trees": [
+      "almonds"
+    ],
+    "apple tree": [
+      "apples"
+    ],
+    "apple trees": [
+      "apples"
+    ],
+    "apple": [
+      "apples"
+    ],
+    "cherry": [
+      "cherries"
+    ],
+    "cherry tree": [
+      "cherries"
+    ],
+    "cherry trees": [
+      "cherries"
+    ],
+    "pear tree": [
+      "pears"
+    ],
+    "pear trees": [
+      "pears"
+    ],
+    "apricot tree": [
+      "apricots"
+    ],
+    "apricot trees": [
+      "apricots"
+    ],
+    "peach tree": [
+      "peaches"
+    ],
+    "peach trees": [
+      "peaches"
+    ],
+    "stone fruits": [
+      "stone fruit"
+    ],
+    "avocados": [
+      "avocado"
+    ],
+    "citrus trees": [
+      "citrus"
+    ],
+    "citrus tree": [
+      "citrus"
+    ],
+    "oranges": [
+      "citrus"
+    ],
+    "orange": [
+      "citrus"
+    ],
+    "orange tree": [
+      "citrus"
+    ],
+    "orange trees": [
+      "citrus"
+    ],
+    "grapefruits": [
+      "citrus"
+    ],
+    "grapefruit": [
+      "citrus"
+    ],
+    "grapefruit trees": [
+      "citrus"
+    ],
+    "grapefruit tree": [
+      "citrus"
+    ],
+    "limes": [
+      "citrus"
+    ],
+    "lime": [
+      "citrus"
+    ],
+    "lime tree": [
+      "citrus"
+    ],
+    "lime trees": [
+      "citrus"
+    ],
+    "lemon": [
+      "citrus"
+    ],
+    "lemons": [
+      "citrus"
+    ],
+    "lemon tree": [
+      "citrus"
+    ],
+    "lemon trees": [
+      "citrus"
+    ],
+    "tangerine": [
+      "citrus"
+    ],
+    "tangerines": [
+      "citrus"
+    ],
+    "tangerine trees": [
+      "citrus"
+    ],
+    "tangerine tree": [
+      "citrus"
+    ],
+    "conifer tree": [
+      "conifer trees"
+    ],
+    "coniferous trees": [
+      "conifer trees"
+    ],
+    "coniferous tree": [
+      "conifer trees"
+    ],
+    "spruce trees": [
+      "conifer trees"
+    ],
+    "spruce tree": [
+      "conifer trees"
+    ],
+    "pine trees": [
+      "conifer trees"
+    ],
+    "pine tree": [
+      "conifer trees"
+    ],
+    "fir trees": [
+      "conifer trees"
+    ],
+    "fir tree": [
+      "conifer trees"
+    ],
+    "kiwis": [
+      "kiwi"
+    ],
+    "kiwifruit": [
+      "kiwi"
+    ],
+    "chinese gooseberry": [
+      "kiwi"
+    ],
+    "chinese gooseberries": [
+      "kiwi"
+    ],
+    "kiwifruits": [
+      "kiwi"
+    ],
+    "green olive": [
+      "olives"
+    ],
+    "black olive": [
+      "olives"
+    ],
+    "green olives": [
+      "olives"
+    ],
+    "black olives": [
+      "olives"
+    ],
+    "olive tree": [
+      "olives"
+    ],
+    "olive trees": [
+      "olives"
+    ],
+    "pistachio tree": [
+      "pistachios"
+    ],
+    "pistachio trees": [
+      "pistachios"
+    ],
+    "walnuts": [
+      "walnut"
+    ],
+    "walnut tree": [
+      "walnut"
+    ],
+    "walnut trees": [
+      "walnut"
+    ],
+    "january": [
+      "jan"
+    ],
+    "february": [
+      "feb"
+    ],
+    "march": [
+      "mar"
+    ],
+    "april": [
+      "apr"
+    ],
+    "june": [
+      "jun"
+    ],
+    "july": [
+      "jul"
+    ],
+    "august": [
+      "aug"
+    ],
+    "september": [
+      "sep"
+    ],
+    "october": [
+      "oct"
+    ],
+    "november": [
+      "nov"
+    ],
+    "december": [
+      "dec"
+    ]
+  }
+}
