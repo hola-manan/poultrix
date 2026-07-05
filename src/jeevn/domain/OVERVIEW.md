@@ -27,7 +27,7 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ### [`crop/phenology.py`](crop/phenology.py)
 `CropPhenologyDatabase` — class-attribute lookup table keyed by crop name.
 
-- **`CROP_DATA`** — currently has `"apple"` and `"wheat"` (anything else falls back to wheat). For each crop:
+- **`CROP_DATA`** — has `"apple"`, `"wheat"`, and `"grape"` (the pilot crop; anything else falls back to wheat). The grape calendar is anchored to forward/fruit pruning, not sowing, so `days_since_sowing` is days-since-pruning for grape. For each crop:
   - `t_base` (°C) — base temperature for GDD accumulation.
   - `growth_stages` — ordered dict of `{stage_name: {days, gdd, kc, ndvi_range}}`.
   - `nutrient_requirements_kg_per_acre` — per-nutrient `{low, optimal, high}` targets.
@@ -119,17 +119,26 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ### [`pest_disease_weed/assessment.py`](pest_disease_weed/assessment.py)
 `PestDiseaseWeedAssessor.assess_pest_disease_risk(aoi_data, ndvi_data)`.
 
-- **`PEST_DATABASE`** keyed by crop. Apple has Spider Mites, Powdery Mildew, Codling Moth, Alternaria Leaf Spot + Bermuda Grass / Chenopodium album. Wheat has Armyworm + Phalaris minor. Each entry holds: `temperature_range`, `humidity_impact` (`high_humidity_increases_risk` / `low_humidity_increases_risk` / `moderate`), an `rvi_risk_factor` lambda, `stage_susceptibility` map, and `organic_solution` + `chemical_solution`.
-- Derives a coarse `humidity_estimate = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)` since we don't have a direct humidity feed.
-- **`_calculate_pest_disease_risk`** — weighted score:
-  - 30% temperature suitability (peaks in middle of `temperature_range`)
-  - 25% humidity impact (direction depends on the pest)
-  - 25% RVI factor (lambda)
-  - 20% growth-stage susceptibility (from per-stage multipliers, defaults to 0.7)
+- **`PEST_DATABASE`** keyed by crop. Apple has Spider Mites, Powdery Mildew, Codling Moth, Alternaria Leaf Spot + Bermuda Grass / Chenopodium album. Wheat has Armyworm + Phalaris minor. **Grape** (pilot crop) has Powdery Mildew + Downy Mildew (both `model`-driven — see below) + Grape Mealybug + Bermuda Grass. Heuristic entries hold: `temperature_range`, `humidity_impact`, `stage_susceptibility`, `organic_solution`, `chemical_solution`. Model-driven entries carry a `model` key instead of the scoring fields.
+- **Real humidity:** uses the measured `weather.daily.relative_humidity_mean` (Open-Meteo hourly RH, 24-h mean) when present; only falls back to the coarse proxy `min(100, 40 + rainfall×2 + (30 − temp_mean)×2)` on fabricated weather, flagging `environmental_conditions.humidity_estimated`.
+- **Model-driven grape diseases** (`_assess_model_disease`, dispatched on the `model` key) call [`crop_health/disease_models.py`](crop_health/disease_models.py): `gubler_powdery_mildew_index` (UC Davis Gubler-Thomas, hourly temperature) and `downy_mildew_wet_period_risk` (hedged RH-as-leaf-wetness wet-period flag). Hourly series come from `_select_hourly` (forecast preferred, archive fallback); model diseases are **omitted** (not fabricated) when no hourly feed is available.
+- **`_calculate_pest_disease_risk`** (generic heuristic for non-model pests) — weighted score, **RVI dropped** (was an unjustified 25%): 40% temperature suitability + 35% humidity impact + 25% growth-stage susceptibility.
 - **`_calculate_weed_risk`** — moisture trigger (40%), recent rainfall (≤20), low-vigor penalty (40 × (1 − rvi_impact)).
 - Risk levels: pest `high≥70`, `moderate≥40`; weeds `high≥60`, `moderate≥35`.
 - **Returns** `{environmental_conditions: {…}, pests_diseases: [...], weeds: [...], summary: {high/moderate/low_risk_count}}` — both threat lists are sorted by descending risk %.
 - **`get_management_recommendations`** (separate static method, not called by default) produces a flat IPM action list.
+
+---
+
+## `crop_health/` — weather-driven disease models
+
+### [`crop_health/disease_models.py`](crop_health/disease_models.py)
+Pure functions (no I/O) for grape disease risk, consumed by `pest_disease_weed/assessment.py`.
+
+- **`gubler_powdery_mildew_index(hourly_times, hourly_temps_c, …)`** — UC Davis Gubler-Thomas powdery-mildew index from hourly temperature only (powdery mildew is temperature-driven, so a regional grid suffices). ≥6 continuous hours in 21–30 °C qualifies a day; 3 consecutive qualifying days initiate at 60; ±20/−10 thereafter; −10 heat penalty ≥35 °C; 0–100, mapped to spray intervals. A *confident* alert.
+- **`downy_mildew_wet_period_risk(times, temps, rh, precip, …)`** — *hedged* downy-mildew flag. Downy mildew is leaf-wetness-driven and leaf wetness is microclimate (no Open-Meteo variable), so this is an explicit regional proxy: longest wet period (RH≥90% or rain) in the 13–30 °C band + the "3-10" primary-infection rule. Carries `confidence: "regional-proxy"` and scout/confirm language — never a direct spray instruction.
+
+See PROCESSES.md H.2/H.3 and the go/no-go in the plan history for why these two diseases are treated so differently.
 
 ---
 

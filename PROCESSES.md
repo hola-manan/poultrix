@@ -456,24 +456,20 @@ slope_pct = 100 × √(dz/dx² + dz/dy²)
 
 ---
 
-### D.5 Relative humidity (estimated)
+### D.5 Relative humidity
 
 **What it is:** Near-surface relative humidity, % — a driver of pest/disease pressure and (indirectly) of pollination/disease yield penalties.
 
-**Scientific ideal:** Direct measurement with a capacitive RH sensor (Vaisala HMP-series) in the same Stevenson screen as the thermometer, or derived from a measured dewpoint. WMO accuracy spec: ±3% RH. Open-Meteo also exposes a modelled `relative_humidity_2m` that would be a far better source than the proxy below.
+**Scientific ideal:** Direct measurement with a capacitive RH sensor (Vaisala HMP-series) in the same Stevenson screen as the thermometer, or derived from a measured dewpoint. WMO accuracy spec: ±3% RH.
 
-**What this MVP does:** **No RH is fetched.** It is *estimated* on the fly from daily temperature and rainfall:
-```
-humidity = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)
-```
-A flat formula: wetter/cooler days read higher. The same expression is duplicated in two consumers rather than computed once.
+**What this MVP does:** **Real, where available.** The weather adapter now fetches Open-Meteo hourly `relative_humidity_2m` and surfaces a last-24-hour mean as `daily.relative_humidity_mean` (m³/m³ is the soil-moisture analogue; RH is %). The pest/disease model and the yield-reduction model both consume that measured value. Only when the feed has no RH (fabricated-weather fallback) do they revert to the legacy proxy `humidity = min(100, 40 + rainfall×2 + (30 − temp_mean)×2)`, and the output is flagged `humidity_estimated: true`.
 
-**Gap / when it breaks:** Crude proxy with no physical basis — a hot dry day with no rain floors near 40%, a cool wet day saturates at 100%. Drives the 25% humidity weight in the pest/disease score and the "high humidity in flowering/fruit_set → 10% pest/disease" yield penalty, so error here propagates into both. The real fix is one line: read Open-Meteo `relative_humidity_2m`.
+**Gap / when it breaks:** Open-Meteo RH is modelled (ERA5/ICON, ~9–25 km in India), not an on-site sensor, and is a 2 m air value — it does not capture in-canopy microclimate (the limitation the grape downy-mildew model is explicitly hedged against; see H.3). The proxy fallback remains crude (no physical basis) but now fires only when the whole weather section is already flagged fabricated.
 
 **Code path:**
-- Data source: none (derived from D.1 temp + D.2 rain).
-- Transformation: [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (~line 110) and again in [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_calculate_reduction_factors`, ~line 150).
-- Outstream: feeds H.1 (`humidity_impact`) and I.1 (pest/disease reduction factor); surfaces as `environmental_conditions.humidity`.
+- Data source: Open-Meteo hourly `relative_humidity_2m` in [src/jeevn/infrastructure/data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py) (archive + forecast); 24-h mean via `_mean_of_last_n`.
+- Transformation: real-vs-proxy selection in [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`assess_pest_disease_risk`) and [src/jeevn/domain/growth_yield/projection.py](src/jeevn/domain/growth_yield/projection.py) (`_calculate_reduction_factors`).
+- Outstream: feeds H.1/H.2/H.3 and I.1; surfaces as `environmental_conditions.humidity_estimate` + `humidity_estimated` (the UI/PDF label "Humidity" vs "Humidity (est.)" off the flag).
 
 ---
 
@@ -588,13 +584,13 @@ With hard-coded defaults `FC=0.25`, `WP=0.12`, `depletion_fraction=0.5`, depth=3
 
 **Scientific ideal:** **Visual scoring against the BBCH-scale** (Biologische Bundesanstalt, Bundessortenamt und CHemische Industrie) — standardised 00-99 codes per crop, scouted in the field at twice-weekly cadence. Or phenology cameras (PhenoCam network) for automated detection from canopy greenness time-series.
 
-**What this MVP does:** Days-since-sowing + GDD walk through a hard-coded per-crop stage table (only apple + wheat are populated; everything else falls back to wheat).
+**What this MVP does:** Days-since-sowing + GDD walk through a hard-coded per-crop stage table (apple, wheat, and grape are populated; everything else falls back to wheat).
 ```
 accumulated_gdd = Σ max(0, daily_temp_mean − t_base)
 walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ accumulated_gdd is "current"
 ```
 
-**Gap / when it breaks:** Date-driven, not observation-driven. Will say "flowering" on the canonical date even if the orchard is actually 10 days late. Two-crop database — anything other than apple/wheat is treated as wheat.
+**Gap / when it breaks:** Date-driven, not observation-driven. Will say "flowering" on the canonical date even if the orchard is actually 10 days late. Three-crop database (apple/wheat/grape) — anything else is treated as wheat. The grape calendar is anchored to forward (fruit) pruning, not sowing, so `days_since_sowing` must be days-since-pruning for grape.
 
 **Code path:**
 - Data source: sowing date (user input or default), temp_mean series from Open-Meteo, crop_name.
@@ -641,7 +637,7 @@ walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ 
 
 **Scientific ideal:** Compare observed BBCH stage dates (F.1) against a GDD- or date-anchored expectation derived from the local long-term climatology for the cultivar, ideally with a confidence interval on the expected window.
 
-**What this MVP does:** Compares `days_since_sowing` against a hard-coded per-stage day-range table (apple + wheat; everything else falls back to wheat). If inside the window → "On schedule"; before it → "Early by …"; after it → "Late by …". Note the label wording is slightly counter-intuitive: being *before* the expected window is called "Early … (delayed development)" and *after* is "Late … (accelerated development)".
+**What this MVP does:** Compares `days_since_sowing` against a hard-coded per-stage day-range table (apple, wheat, grape; everything else falls back to wheat). If inside the window → "On schedule"; before it → "Early by …"; after it → "Late by …". Note the label wording is slightly counter-intuitive: being *before* the expected window is called "Early … (delayed development)" and *after* is "Late … (accelerated development)".
 
 **Gap / when it breaks:** The day-ranges are fixed calendars, not GDD-driven, so the assessment double-counts the same date-vs-observation weakness as F.1. Two-crop table. The label semantics are easy to misread.
 
@@ -676,7 +672,7 @@ gap = max(0, adjusted_target − current)
 status = critical | moderate | adequate based on current/target ratio
 ```
 
-**Gap / when it breaks:** **N/P/K current supply is now real regional data**, not a single constant — the India Soil Health Card (2023-24) cascaded village → district → state, or an injected soil test. Each nutrient carries a `source` + `confidence`; the real-time advisory only *alerts* on a dose at ≥ medium confidence (soil test / SHC), never on a placeholder- or weak-proxy-derived value (see §M). **S and Zn still use the legacy constant** (the SHC macro export covers only N/P/K), and the **nutrient set is crop-dependent**: the apple phenology table defines all five (N/P/K/S/Zn), the wheat table only N/P/K — so S/Zn gaps are never computed for wheat. Outside India with no soil test, N falls to a SoilGrids total-N proxy, K to a CEC proxy, P to the flagged constant — all low-confidence and non-alerting. The supply is expressed as a *fraction of the crop's recommended dose* (not an absolute soil-test kg/acre) to stay unit-consistent with the phenology targets.
+**Gap / when it breaks:** **N/P/K current supply is now real regional data**, not a single constant — the India Soil Health Card (2023-24) cascaded village → district → state, or an injected soil test. Each nutrient carries a `source` + `confidence`; the real-time advisory only *alerts* on a dose at ≥ medium confidence (soil test / SHC), never on a placeholder- or weak-proxy-derived value (see §M). **S and Zn still use the legacy constant** (the SHC macro export covers only N/P/K), and the **nutrient set is crop-dependent**: the apple and grape phenology tables define all five (N/P/K/S/Zn), the wheat table only N/P/K — so S/Zn gaps are never computed for wheat. Outside India with no soil test, N falls to a SoilGrids total-N proxy, K to a CEC proxy, P to the flagged constant — all low-confidence and non-alerting. The supply is expressed as a *fraction of the crop's recommended dose* (not an absolute soil-test kg/acre) to stay unit-consistent with the phenology targets.
 
 **Code path:**
 - Data source: [src/jeevn/infrastructure/data_sources/soil_nutrients.py](src/jeevn/infrastructure/data_sources/soil_nutrients.py) `resolve_npk` (tables in [data/static/shc_{district,village}_npk.csv[.gz]](data/static/), built by [scripts/dev_smoke/build_shc_district_npk.py](scripts/dev_smoke/build_shc_district_npk.py)); attached to `aoi_data["soil_nutrients"]`. Target from crop phenology in [src/jeevn/domain/crop/phenology.py](src/jeevn/domain/crop/phenology.py).
@@ -691,7 +687,7 @@ status = critical | moderate | adequate based on current/target ratio
 
 **Scientific ideal:** **4R Nutrient Stewardship** (Right source, Right rate, Right time, Right place) per IPNI: split-application of N matched to crop uptake curves; banded or fertigated P near roots; soil-test-derived rates; tissue-test mid-season adjustments. Plus 4R refinements for variable-rate based on yield-zone maps.
 
-**What this MVP does:** Three distinct per-crop branches, each converting a per-nutrient gap to product mass by nutrient %. **The branches do not share a formula — apple and wheat make different chemistry assumptions:**
+**What this MVP does:** Four distinct per-crop branches (apple, wheat, grape, generic), each converting a per-nutrient gap to product mass by nutrient %. **The branches do not share a formula — they make different chemistry assumptions:**
 
 *Apple* (`_get_apple_recommendations`) — fertigation-oriented, splits P and K across a soluble + an organic source, and is the only branch that handles S and Zn:
 ```
@@ -712,13 +708,15 @@ dap_kg    = P_gap / 0.20                      # DAP treated as 20% P here (vs 46
 mop_kg    = K_gap / 0.60                      # MOP (Muriate of Potash), not SOP
 ```
 
+*Grape* (`_get_grape_recommendations`) — fully fertigated, handles all five nutrients like apple but K-weighted to berry-development/veraison; **uses SOP not MOP** (grapes are chloride-sensitive) and delivers Zn **foliar** (grapes are prone to little-leaf Zn deficiency). Tops up S only beyond what SOP's 18% S already supplies.
+
 *Generic* (`_get_generic_recommendations`) — fallback for any other crop: one "Generic source" line per nutrient at `quantity = gap` (no product chemistry at all).
 
 **Gap / when it breaks:** The same P gap yields different DAP masses for apple vs wheat because the two branches assume different DAP grades (46% vs 20%) — an internal inconsistency, not a calibrated agronomic choice. Wheat's missing S/Zn ties back to G.1's crop-dependent nutrient set.
 
 **Code path:**
-- Data source: gap from G.1; branch selected by crop name (anything not apple/wheat → generic).
-- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations` line ~76, `_get_wheat_recommendations` line ~175, `_get_generic_recommendations` line ~227).
+- Data source: gap from G.1; branch selected by crop name (anything not apple/wheat/grape → generic).
+- Transformation: [src/jeevn/domain/fertilizer/schedule.py](src/jeevn/domain/fertilizer/schedule.py) (`_get_apple_recommendations`, `_get_wheat_recommendations`, `_get_grape_recommendations`, `_get_generic_recommendations`).
 - Outstream: `recommended_products[]` → fertilizer table + recommended-products expander on PDF page 5.
 
 ---
@@ -731,27 +729,60 @@ mop_kg    = K_gap / 0.60                      # MOP (Muriate of Potash), not SOP
 
 **Scientific ideal:** **Degree-day pest-forecasting models** (e.g. Welch et al. for codling moth) — accumulate insect-specific GDD from biofix dates; combined with **trap counts** (pheromone traps logged 2-3× weekly) and **field scouting** (whole-plant inspection on a stratified sample). Disease forecasters layer in leaf wetness duration (e.g. Mills curves for apple scab).
 
-**What this MVP does:** Weighted 0-100 score per pest:
+**What this MVP does:** This is the **generic susceptibility heuristic** used for apple/wheat (and any crop without a dedicated model). Grape powdery/downy mildew are no longer scored here — they have published weather-driven models in H.2/H.3. The heuristic is a weighted 0-100 score per pest:
 ```
-score = 30% × temp_suitability(temp_mean, temp_range_for_pest)
-      + 25% × humidity_impact(estimated_humidity, pest.humidity_preference)
-      + 25% × rvi_risk_factor(rvi)   # per-pest lambda
-      + 20% × stage_susceptibility[current_stage]
+score = 40% × temp_suitability(temp_mean, temp_range_for_pest)
+      + 35% × humidity_impact(humidity, pest.humidity_preference)
+      + 25% × stage_susceptibility[current_stage]
 ```
-With humidity itself *estimated* from `min(100, 40 + rainfall×2 + (30 − temp_mean)×2)` since we have no direct RH source.
-
 Risk levels: `high ≥ 70, moderate ≥ 40, low < 40`.
 
-**Gap / when it breaks:** No degree-day biofix accumulation, no trap counts, no leaf-wetness. Humidity is a single-formula proxy. Pest database has only 4 apple and 1 wheat entries.
+**Two changes from the original heuristic:** (1) **RVI was dropped** — canopy vigour previously contributed 25% of disease risk, which is agronomically unjustified; the remaining temp/humidity/stage weights were rescaled (40/35/25). (2) **Humidity is now the real measured RH** (D.5) when the feed provides it; the `40 + rainfall×2…` proxy is only the fabricated-weather fallback (flagged `humidity_estimated`).
+
+**Gap / when it breaks:** Still a static susceptibility heuristic — no degree-day biofix, no trap counts, no leaf-wetness, no forward forecast window. Pest database has 4 apple, 1 wheat, and 3 grape entries (one of which, the mealybug, uses this heuristic; the two mildews use H.2/H.3).
 
 **Code path:**
-- Data source: weather (D.1/D.2), ndvi_data (RVI), growth_stage.
+- Data source: weather (D.1/D.2/D.5), growth_stage. (RVI no longer read here.)
 - Transformation: [src/jeevn/domain/pest_disease_weed/assessment.py](src/jeevn/domain/pest_disease_weed/assessment.py) (`_calculate_pest_disease_risk` + the `PEST_DATABASE` dict).
 - Outstream: `components.pest_disease_weed.pests_diseases[].{name, risk_percent, risk_level, organic_solution, chemical_solution}` — PDF page 4 + Streamlit pest section.
 
 ---
 
-### H.2 Weed risk score
+### H.2 Powdery mildew — Gubler-Thomas index (grape)
+
+**What it is:** A confident, weather-driven spray-window risk for grape powdery mildew (*Erysiphe necator*).
+
+**Scientific ideal:** The **UC Davis Gubler-Thomas Risk Index** (a peer-reviewed model) — powdery mildew is temperature-driven (rain suppresses it), so a published hourly-temperature model needs no leaf-wetness or microclimate sensor. This is the disease where a regional 9–11 km grid is genuinely adequate at block scale (see the go/no-go in the plan history).
+
+**What this MVP does:** Faithful Gubler-Thomas, computed from Open-Meteo **hourly temperature**: a day *qualifies* if it has ≥6 continuous hours in 21–30 °C; 3 consecutive qualifying days initiate the index at 60; thereafter +20 per qualifying day, −10 per non-qualifying day, additional −10 on any day reaching ≥35 °C; index clamped 0–100. Maps to `high ≥ 60 (14-day spray), moderate ≥ 30 (17-day), low (21-day)`. Prefers the forward forecast hourly series (actionable this-week window), falls back to recent archive.
+
+**Gap / when it breaks:** Open-Meteo temperature is modelled, not on-site; the index assumes the published thresholds without local calibration; omitted entirely (not fabricated) when no hourly feed is available.
+
+**Code path:**
+- Data source: Open-Meteo hourly `temperature_2m` (forecast preferred) via [src/jeevn/infrastructure/data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py).
+- Transformation: [src/jeevn/domain/crop_health/disease_models.py](src/jeevn/domain/crop_health/disease_models.py) (`gubler_powdery_mildew_index`); dispatched from `assessment.py` (`_assess_model_disease`) for `PEST_DATABASE["grape"]` entries flagged `model: "gubler_powdery"`.
+- Outstream: `pests_diseases[]` entry with `{model, risk_percent (=index), risk_level, spray_interval_days, rationale}`.
+
+---
+
+### H.3 Downy mildew — wet-period flag (grape, hedged)
+
+**What it is:** A deliberately **hedged** "conditions favorable — scout/confirm" flag for grape downy mildew (*Plasmopara viticola*), never a direct spray instruction.
+
+**Scientific ideal:** Downy mildew is **leaf-wetness-driven** (sporulation/infection need free water or ≥95% RH at 13–30 °C). Leaf wetness is a *microclimate* variable; the gold-standard input is an in-canopy leaf-wetness sensor feeding a mechanistic model (Goidanich/EPI/DMCast). Open-Meteo has no leaf-wetness variable and Indian RH/rain are only ~9–25 km — so a regional feed can only *approximate* this (the explicit limitation from the go/no-go).
+
+**What this MVP does:** From Open-Meteo hourly temp/RH/precip: detect the longest consecutive **wet period** (RH ≥ 90% or precip > 0.2 mm/h) with temperature in the 13–30 °C infection band; flag favorable if that run ≥ 4 h, or if a day meets the **3-10 primary-infection rule** (≥10 mm rain at ≥10 °C, shoots ≥10 cm when known). Risk `high` for a long optimal wet period or a primary-rule day, else `moderate`/`low`. Every output carries `confidence: "regional-proxy"` and scout/confirm language.
+
+**Gap / when it breaks:** RH is a *proxy* for leaf wetness, not a measurement — this is precisely where on-farm IoT sensors (the incumbents' moat) beat satellite + regional weather. The flag can cry-wolf (regional rain that missed the block) or miss local dew events. Treated as advisory-only; omitted when no hourly feed.
+
+**Code path:**
+- Data source: Open-Meteo hourly `temperature_2m` / `relative_humidity_2m` / `precipitation` (forecast preferred).
+- Transformation: [src/jeevn/domain/crop_health/disease_models.py](src/jeevn/domain/crop_health/disease_models.py) (`downy_mildew_wet_period_risk`); dispatched for `PEST_DATABASE["grape"]` entries flagged `model: "downy_wet_period"`.
+- Outstream: `pests_diseases[]` entry with `{model, risk_percent, risk_level, favorable, confidence, rationale}`.
+
+---
+
+### H.4 Weed risk score
 
 **What it is:** Likelihood of weed pressure during the current period.
 
@@ -783,14 +814,14 @@ Risk: `high ≥ 60, moderate ≥ 35`. RSM is constant 0.72 (see A.5), so the fir
 ```
 adjusted_yield = yield_potential × ∏(1 − reduction_i/100)
 ```
-where `yield_potential` comes from `phenology.CROP_DATA[crop]["yield_potential_kg_per_acre"]` (apple: 2500, wheat: 3650), and `reduction_i` is a fixed-percentage hit from each limiting factor detected:
+where `yield_potential` comes from `phenology.CROP_DATA[crop]["yield_potential_kg_per_acre"]` (apple: 2500, wheat: 3650, grape: 10000), and `reduction_i` is a fixed-percentage hit from each limiting factor detected:
 - RVI<0.60 → 15% nutrient deficiency; <0.70 → 8%
 - High humidity in flowering/fruit_set → 10% pest/disease
 - Soil moisture < 0.50 → 20% water stress; <0.60 → 5%
 - Flowering + RVI<0.60 → 5% poor pollination
 - Apple + RVI<0.70 → 5% reduced canopy
 
-From `adjusted_yield` the projection also derives three headline numbers: `yield_potential_total_kg = yield_potential × area`, `total_yield_kg = adjusted_yield × area`, and `potential_loss_percent = (yield_potential − adjusted_yield) / yield_potential × 100`. Separately, `harvest_status` (`_determine_harvest_status`) maps the current stage + `days_since_sowing` against a per-crop maturity window (apple 275-305 d, wheat 125-135 d, else 100-150 d) to `ready / incomplete / overripe`.
+From `adjusted_yield` the projection also derives three headline numbers: `yield_potential_total_kg = yield_potential × area`, `total_yield_kg = adjusted_yield × area`, and `potential_loss_percent = (yield_potential − adjusted_yield) / yield_potential × 100`. Separately, `harvest_status` (`_determine_harvest_status`) maps the current stage + `days_since_sowing` against a per-crop maturity window (apple 275-305 d, wheat 125-135 d, grape 145-160 d, else 100-150 d) to `ready / incomplete / overripe`.
 
 **Gap / when it breaks:** Multiplicative penalties on a fixed potential — no representation of the *timing* of stress (a 5-day water stress at flowering vs at maturity matters very differently). Yield potential is a single number per crop, not cultivar/zone-specific. `harvest_status` is purely calendar-driven (same date-vs-observation weakness as F.1/F.4), so it can read "ready" on a crop that is actually behind.
 

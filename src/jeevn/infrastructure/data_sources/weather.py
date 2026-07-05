@@ -74,11 +74,18 @@ class WeatherDataFetcher:
                     "shortwave_radiation_sum",
                     "windspeed_10m_max",
                 ]),
-                # Hourly surface soil moisture (m³/m³). Open-Meteo also
-                # offers 1-3, 3-9, 9-27, 27-81 cm depth layers; 0-7 cm is
-                # the standard "surface" value that matches what SMAP and
-                # NISAR estimate. The composer aggregates to a 24-h mean.
-                "hourly": "soil_moisture_0_to_7cm",
+                # Hourly variables. `soil_moisture_0_to_7cm` (m³/m³) is the
+                # surface layer matching SMAP/NISAR — the composer aggregates
+                # it to a 24-h mean. `temperature_2m` / `relative_humidity_2m`
+                # / `precipitation` drive the grape disease models
+                # (Gubler-Thomas powdery mildew, downy-mildew wet-period) which
+                # need hourly resolution, not daily aggregates.
+                "hourly": ",".join([
+                    "temperature_2m",
+                    "relative_humidity_2m",
+                    "precipitation",
+                    "soil_moisture_0_to_7cm",
+                ]),
                 "timezone": "auto",
                 "temperature_unit": "celsius",
                 "windspeed_unit": "kmh",
@@ -94,6 +101,9 @@ class WeatherDataFetcher:
 
             sm_hourly = hourly_data.get("soil_moisture_0_to_7cm", []) or []
             sm_last_24h_mean = _mean_of_last_n(sm_hourly, n=24)
+
+            rh_hourly = hourly_data.get("relative_humidity_2m", []) or []
+            rh_last_24h_mean = _mean_of_last_n(rh_hourly, n=24)
 
             return {
                 "location": {
@@ -112,6 +122,17 @@ class WeatherDataFetcher:
                     # Mean of the most-recent 24 hourly readings (m³/m³).
                     # `None` if Open-Meteo returned no soil-moisture values.
                     "soil_moisture_0_to_7cm_mean": sm_last_24h_mean,
+                    # Real measured RH replaces the old fabricated humidity
+                    # proxy in the pest/disease model. `None` if unavailable.
+                    "relative_humidity_mean": rh_last_24h_mean,
+                },
+                # Hourly series consumed by the grape disease models. Kept as
+                # parallel arrays (Open-Meteo's native shape) aligned on `time`.
+                "hourly": {
+                    "time": hourly_data.get("time", []),
+                    "temperature_2m": hourly_data.get("temperature_2m", []),
+                    "relative_humidity_2m": rh_hourly,
+                    "precipitation": hourly_data.get("precipitation", []),
                 },
                 "_fabricated": False,
             }
@@ -165,6 +186,14 @@ class WeatherDataFetcher:
                     "shortwave_radiation_sum",
                     "windspeed_10m_max",
                 ]),
+                # Forward hourly series — drives the actionable "this week's
+                # spray window" disease alert (the forecast, not the archive,
+                # is what a weekly advisory loop acts on).
+                "hourly": ",".join([
+                    "temperature_2m",
+                    "relative_humidity_2m",
+                    "precipitation",
+                ]),
                 "forecast_days": days,
                 "timezone": "auto",
                 "temperature_unit": "celsius",
@@ -177,7 +206,9 @@ class WeatherDataFetcher:
 
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
-            daily_data = response.json().get("daily", {})
+            payload = response.json()
+            daily_data = payload.get("daily", {})
+            hourly_data = payload.get("hourly", {})
 
             dates = daily_data.get("time", [])
             today_iso = datetime.now().strftime("%Y-%m-%d")
@@ -196,6 +227,12 @@ class WeatherDataFetcher:
                 },
                 "today_index": today_index,
                 "past_days": past_days,
+                "hourly": {
+                    "time": hourly_data.get("time", []),
+                    "temperature_2m": hourly_data.get("temperature_2m", []),
+                    "relative_humidity_2m": hourly_data.get("relative_humidity_2m", []),
+                    "precipitation": hourly_data.get("precipitation", []),
+                },
                 "_fabricated": False,
             }
         except Exception as e:

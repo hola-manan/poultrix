@@ -55,6 +55,9 @@ def render(components: dict, *, location: str, vigor: str = "good"):
     env_cond = components.get('environmental_conditions', {})
     temp_mean = env_cond.get('temperature', 30)
     humidity_est = env_cond.get('humidity_estimate', 60)
+    humidity_is_est = env_cond.get('humidity_estimated', True)
+    humidity_label = "Humidity (est.)" if humidity_is_est else "Humidity"
+    humidity_word = "estimated humidity" if humidity_is_est else "measured humidity"
     rsm_val = env_cond.get('rsm', 0.72)
     rsm_source = env_cond.get('rsm_source') or 'fabricated'
     rsm_pass_date = env_cond.get('rsm_pass_date')
@@ -73,7 +76,7 @@ def render(components: dict, *, location: str, vigor: str = "good"):
     # because today it usually comes from Open-Meteo (NISAR dormant).
     m1, m2, m3 = st.columns(3)
     m1.metric("Temperature", f"{temp_mean:.0f} °C")
-    m2.metric("Humidity (est.)", f"{humidity_est:.0f}%")
+    m2.metric(humidity_label, f"{humidity_est:.0f}%")
     m3.metric(
         "RSM (soil moisture)", f"{rsm_val:.2f}",
         delta=rsm_source_label, delta_color="off",
@@ -84,10 +87,34 @@ def render(components: dict, *, location: str, vigor: str = "good"):
     st.markdown(
         f"High canopy density ({vigor} vegetation vigor) creates a humid microclimate "
         f"conducive to fungal diseases. Rising {location} temperatures ({temp_mean:.0f}°C "
-        f"mean) accelerate pest life cycles, while {humidity_est:.0f}% estimated humidity "
+        f"mean) accelerate pest life cycles, while {humidity_est:.0f}% {humidity_word} "
         f"increases susceptibility to leaf-spot diseases during the sensitive {gs_pest} "
         "period."
     )
+
+    # Weather-driven disease models (grape): surface the Gubler powdery-mildew
+    # index + spray interval and the hedged downy-mildew wet-period flag so the
+    # farmer sees the reasoning, not just a percentage.
+    model_dx = [t for t in components.get('pests_diseases', []) if t.get('model')]
+    if model_dx:
+        st.markdown("**Disease risk models**")
+        for d in model_dx:
+            if d.get('model') == 'gubler_powdery':
+                st.markdown(
+                    f"- **{d['name']}** — Gubler-Thomas index "
+                    f"**{d.get('risk_percent', 0):.0f}/100** "
+                    f"({(d.get('risk_level') or '').title()}). Suggested spray "
+                    f"interval ≈ **{d.get('spray_interval_days', '—')} days**. "
+                    f"{d.get('rationale', '')}"
+                )
+            elif d.get('model') == 'downy_wet_period':
+                st.markdown(
+                    f"- **{d['name']}** — "
+                    f"{'FAVORABLE' if d.get('favorable') else 'not favorable'} "
+                    f"({(d.get('risk_level') or '').title()} risk, "
+                    f"{d.get('confidence', 'regional-proxy')}). "
+                    f"{d.get('rationale', '')}"
+                )
     # Source-aware references. RVI is always Sentinel-1 (real) per task #10.
     # RSM source varies — quote it accurately rather than the old hardcoded
     # "Sentinel-1 SAR indices" line.

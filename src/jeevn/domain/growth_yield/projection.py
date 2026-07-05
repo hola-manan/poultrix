@@ -117,6 +117,16 @@ class YieldGrowthCalculator:
                 "milkstage": (90, 110),
                 "dough": (110, 125),
                 "mature": (125, 135),
+            },
+            "grape": {
+                "budburst": (0, 10),
+                "shoot_growth": (10, 40),
+                "flowering": (40, 55),
+                "fruit_set": (55, 70),
+                "berry_development": (70, 105),
+                "veraison": (105, 125),
+                "ripening": (125, 145),
+                "harvest": (145, 160),
             }
         }
 
@@ -147,7 +157,13 @@ class YieldGrowthCalculator:
         temp_mean = weather.get("temp_mean", [30])[-1] if weather.get("temp_mean") else 30
         rainfall = weather.get("rainfall", [0])[-1] if weather.get("rainfall") else 0
 
-        humidity_estimate = min(100, 40 + (rainfall * 2) + (30 - temp_mean) * 2)
+        # Use the real measured RH (last-24h mean) when the weather feed
+        # provided it; fall back to the coarse proxy only when it didn't.
+        rh_real = weather.get("relative_humidity_mean")
+        if rh_real is not None:
+            humidity_estimate = float(rh_real)
+        else:
+            humidity_estimate = min(100, 40 + (rainfall * 2) + (30 - temp_mean) * 2)
 
         if humidity_estimate > 70 and stage_name in ["flowering", "fruit_set"]:
             reductions["Pest/disease pressure"] = 10.0
@@ -174,6 +190,7 @@ class YieldGrowthCalculator:
         harvest_stages = {
             "apple": ("mature", 275, 305),
             "wheat": ("mature", 125, 135),
+            "grape": ("harvest", 145, 160),
         }
 
         crop_info = harvest_stages.get(crop_name.lower(), ("mature", 100, 150))
