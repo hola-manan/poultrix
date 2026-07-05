@@ -41,6 +41,16 @@ class SoilManagementCalculator:
             "soil_moisture_current": round(soil_props["soil_moisture_current"], 2),
         }
 
+        # Apply Saxton & Rawls (2006) pedotransfer function if we have exact texture
+        s, c, oc = analysis.get("sand_percent"), analysis.get("clay_percent"), analysis.get("organic_carbon_percent")
+        if s is not None and c is not None and oc is not None:
+            fc, pwp = SoilManagementCalculator.calculate_saxton_rawls(s, c, oc)
+            analysis["field_capacity_vol"] = round(fc, 3)
+            analysis["permanent_wilting_point_vol"] = round(pwp, 3)
+            # AWC in mm/m = (FC - PWP) * 1000
+            awc_mm_m = (fc - pwp) * 1000
+            analysis["water_holding_capacity_mm_m"] = round(awc_mm_m, 1)
+
         analysis["detailed_findings"] = SoilManagementCalculator._generate_findings(
             analysis, aoi_data.get("crop_name", "apple")
         )
@@ -125,14 +135,57 @@ class SoilManagementCalculator:
                 f"Cation exchange capacity is {analysis['cec']:.1f} cmol(+)/kg ({cec_status})."
             )
 
-        if analysis["water_holding_capacity_mm"] < 15:
-            findings.append("Low water-holding capacity; frequent irrigation will be necessary.")
-        elif analysis["water_holding_capacity_mm"] < 20:
-            findings.append("Moderate water-holding capacity; typical for sandy loam soils.")
+        if "water_holding_capacity_mm_m" in analysis:
+            awc = analysis["water_holding_capacity_mm_m"]
+            fc = analysis["field_capacity_vol"]
+            pwp = analysis["permanent_wilting_point_vol"]
+            findings.append(f"Saxton & Rawls PTF calculated Volumetric Field Capacity at {fc:.3f} m³/m³ and PWP at {pwp:.3f} m³/m³, yielding an Available Water Capacity of {awc:.1f} mm/m.")
+            if awc < 100:
+                findings.append("Low water-holding capacity; frequent irrigation will be necessary.")
+            elif awc < 150:
+                findings.append("Moderate water-holding capacity; typical for sandy/loam soils.")
+            else:
+                findings.append("Good water-holding capacity; supports longer intervals between irrigations.")
         else:
-            findings.append("Good water-holding capacity; supports longer intervals between irrigations.")
+            if analysis["water_holding_capacity_mm"] < 15:
+                findings.append("Low water-holding capacity; frequent irrigation will be necessary.")
+            elif analysis["water_holding_capacity_mm"] < 20:
+                findings.append("Moderate water-holding capacity; typical for sandy loam soils.")
+            else:
+                findings.append("Good water-holding capacity; supports longer intervals between irrigations.")
 
         return " ".join(findings)
+
+    @staticmethod
+    def calculate_saxton_rawls(sand_pct: float, clay_pct: float, organic_carbon_pct: float) -> tuple[float, float]:
+        """
+        Saxton & Rawls (2006) Pedotransfer Functions (PTF).
+        Mathematically converts soil texture and organic matter into 
+        exact volumetric water thresholds: Field Capacity (FC) and Permanent Wilting Point (PWP).
+        
+        Args:
+            sand_pct: Sand percentage (0-100)
+            clay_pct: Clay percentage (0-100)
+            organic_carbon_pct: Soil Organic Carbon percentage
+            
+        Returns:
+            Tuple of (Field Capacity m³/m³, Permanent Wilting Point m³/m³)
+        """
+        # Convert fractions
+        S = sand_pct / 100.0
+        C = clay_pct / 100.0
+        # Convert Soil Organic Carbon to Soil Organic Matter
+        OM = organic_carbon_pct * 1.724
+
+        # PWP at -1500 kPa
+        theta_1500t = -0.024*S + 0.487*C + 0.006*OM + 0.005*(S*OM) - 0.013*(C*OM) + 0.068*(S*C) + 0.031
+        pwp = theta_1500t + (0.14 * theta_1500t - 0.02)
+        
+        # FC at -33 kPa
+        theta_33t = -0.251*S + 0.195*C + 0.011*OM + 0.006*(S*OM) - 0.027*(C*OM) + 0.452*(S*C) + 0.299
+        fc = theta_33t + (1.283 * (theta_33t**2) - 0.374 * theta_33t - 0.015)
+        
+        return max(0.0, min(fc, 1.0)), max(0.0, min(pwp, fc))
 
     @staticmethod
     def _get_recommendations(analysis: Dict[str, Any]) -> list:
