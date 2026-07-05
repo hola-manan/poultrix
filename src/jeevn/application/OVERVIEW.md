@@ -29,6 +29,7 @@ The `AgriculturalReportGenerator` class. Single static `generate_report(...)` me
   - `ndvi_timeseries` — optional list of `{date, ndvi, ndwi?, ndre?}` dicts from the remote-sensing pipeline. Latest entry overrides the fabricated NDVI default.
   - `ndvi_raster_data` — optional dict with `ndvi_mean`, `parcel_confidence`, `crop_health_path`, `irrigation_health_path` — passed through into the report's `field_maps` block.
   - `location_name` — pre-resolved locality string; if empty, the geocoder fills it.
+  - **Real-time / accuracy overrides (optional):** `sensor_reading` — a `SensorReading` fused as the top-priority soil-moisture source; `growth_stage_override` — authoritative stage from the host crop DB; `soil_test` — top tier of the NPK resolver; `village` — host-known village unlocking village-level SHC NPK. All default to prior behaviour, so existing callers are unaffected.
 
 - **Steps:**
   1. `fetch_aoi_data(...)` returns a single dict containing `location` / `weather` / `soil` / `terrain` / `crop` / `current_growth_stage` / `accumulated_gdd` plus `_fabricated_sources` and `_alerts`.
@@ -48,6 +49,16 @@ The `AgriculturalReportGenerator` class. Single static `generate_report(...)` me
 - **Output:** the full report dict described in Section 7.3 of [../../../ARCHITECTURE.md](../../../ARCHITECTURE.md).
 
 Also exports the convenience function `generate_agricultural_report_from_aoi(...)` for non-API callers (the [test_agricultural_report.py](../../../scripts/test_agricultural_report.py) script uses it directly).
+
+### Real-time advisory & alert layer
+
+A thin layer on top of the accurate report that adds ground-sensor fusion, dry-spell detection, and alert generation. **Advice + alerts only — message delivery (SMS/WhatsApp) is Part 2** behind the `Notifier` seam.
+
+- [`realtime_advisory.py`](realtime_advisory.py) — `RealtimeAdvisor.evaluate(lat, lon, crop, sowing_date, area_acres, sensor, growth_stage_override, soil_test, location_name, village, notifier)`. Reads the (optional) sensor (dropping stale readings), runs `generate_report` with the sensor fused, fetches low-latency recent+forward rainfall (`fetch_forecast(..., past_days=…)`), computes the soil-water deficit (reusing `IrrigationCalculator.calculate_soil_water_deficit`), detects a dry spell (gap-safe), and returns `{report, dry_spell, alerts, …}`. Config via `AdvisoryConfig.from_env()` (thresholds).
+- [`alerts.py`](alerts.py) — `Alert` dataclass + `build_alerts(...)`: `dry_spell`, `irrigate_now` (deficit), `hold_fertigation` (real 48 h forecast rain ≥ threshold), `high_salinity` (real EC), `fertilize` (confidence-gated — only ≥ medium-confidence NPK doses).
+- [`render.py`](render.py) — `render_alert`/`render_advisory` → short human-readable strings (Part-2 delivery reuses these verbatim).
+- [`notifier.py`](notifier.py) — `Notifier` ABC + `ConsoleNotifier` (prints). Twilio SMS/WhatsApp lands here in Part 2.
+- [`realtime_monitor.py`](realtime_monitor.py) — `run_once()` / loop + `python -m jeevn.application.realtime_monitor --once` demo (MockSoilSensor + ConsoleNotifier).
 
 ### [`narratives.py`](narratives.py)
 Pure narrative-shaping helpers — **no I/O, no Streamlit, no ReportLab**. Both the UI sections and the PDF generator import from here so the prose threshold logic lives in one place.

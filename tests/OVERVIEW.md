@@ -23,14 +23,24 @@ pytest -k stub         # name filter
 tests/
 ├── api/
 │   └── test_api.py                       # /health, POST /aoi, AOI_STORE thread-safety
+├── application/
+│   └── test_realtime_advisory.py        # dry-spell/irrigate/hold-fertigation/salinity alerts + confidence gating + data-gap fail-safe
 ├── infrastructure/
 │   ├── data_sources/
 │   │   ├── test_aoi.py                   # composer: fabrication tracking, alerts hoisting
+│   │   ├── test_aoi_sensor_fusion.py     # ground-sensor moisture override; soil_test → NPK profile
 │   │   ├── test_soil.py                  # SoilGrids fetch + texture classifier + WHC/infiltration tables
+│   │   ├── test_soil_nutrients.py        # tiered NPK resolver: soil-test/SHC village→district→state/SoilGrids
 │   │   ├── test_terrain.py               # Horn 1981 kernel + 3-tier fallback chain
 │   │   └── test_weather.py               # Open-Meteo URL params + soil-moisture aggregation
+│   ├── sensors/
+│   │   └── test_soil_sensors.py          # SoilSensor contract + reading freshness
 │   └── db/
 │       └── test_models.py                # AOI / IngestJob / Artifact round-trip via SessionLocal
+├── domain/
+│   ├── dry_spell/
+│   │   └── test_dry_spell_detector.py    # dry-spell logic + fail-safe data-gap path
+│   └── irrigation/                       # ET0 + scheduler regression tests
 ├── ingestion/
 │   └── test_ingest_stub.py               # runner.stub_ingest metadata structure
 ├── remote_sensing/

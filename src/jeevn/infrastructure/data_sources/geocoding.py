@@ -55,6 +55,10 @@ class GeographicDataFetcher:
             # `county`. Used to key the Soil Health Card district NPK lookup.
             district = (address.get("state_district")
                         or address.get("county") or "")
+            # Village: present for many rural points. Only reliable enough to
+            # *refine* the SHC lookup (village → district cascade), not a
+            # dependable key on its own.
+            village = (address.get("village") or address.get("hamlet") or "")
 
             return {
                 "latitude": lat,
@@ -62,6 +66,7 @@ class GeographicDataFetcher:
                 "name": locality,
                 "city": address.get("city", "") or address.get("town", ""),
                 "district": district,
+                "village": village,
                 "state": address.get("state", ""),
                 "country": address.get("country", ""),
                 "display_name": data.get("display_name", ""),

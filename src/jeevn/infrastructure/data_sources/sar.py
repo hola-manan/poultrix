@@ -95,10 +95,13 @@ def _sample_mean(href: str, lat: float, lon: float,
     centroid from a Cloud-Optimized GeoTIFF accessed via /vsicurl/ HTTP
     range reads, and return the mean of valid samples (linear power).
     """
-    import rasterio  # noqa: WPS433 — intentional lazy import
-    from rasterio.warp import transform as warp_transform
-
     try:
+        # Lazy, inside the try so a missing rasterio (an optional heavy
+        # geospatial dep) degrades to a fabricated/proxy RVI like any other
+        # sampling failure, rather than crashing the whole advisory.
+        import rasterio  # noqa: WPS433 — intentional lazy import
+        from rasterio.warp import transform as warp_transform
+
         with rasterio.open(f"/vsicurl/{href}") as ds:
             # Reproject lat/lon into the raster's CRS to find the pixel index.
             xs, ys = warp_transform(

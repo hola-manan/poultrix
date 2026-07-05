@@ -76,28 +76,51 @@ Pass `is_fraction=True` if your device already reports 0..1 of field capacity.
 ## Soil N/P/K profile (India Soil Health Card + SoilGrids)
 
 `infrastructure/data_sources/soil_nutrients.py` replaces the old hardcoded soil-nutrient
-constant with a per-nutrient **supply-fraction** resolver:
+constant with a per-nutrient **supply-fraction** resolver (each nutrient resolved
+independently through the highest-confidence tier that has it):
 
-1. **Injected soil test** (`soil_test=` / `AdvisoryContext`) — confidence `high`.
-2. **India Soil Health Card district** — bundled `data/static/shc_district_npk.csv`, keyed by
-   state+district from reverse geocoding (state-average fallback). Confidence `medium`.
+1. **Injected soil test** (`soil_test=`) — confidence `high`.
+2. **India Soil Health Card**, cascading by administrative unit:
+   - **village** (`data/static/shc_village_npk.csv.gz`, ~270k rows) — confidence `medium`.
+     Only used when the farmer's **village** is known (pass `village=` — see below); a village
+     can't be resolved reliably from a lat/lon.
+   - **district** (`data/static/shc_district_npk.csv`, 737 rows) — confidence `medium`. The
+     dependable fallback, keyed by state+district from reverse geocoding.
+   - **state average** — confidence `low`.
 3. **SoilGrids/pedotransfer** — real N from the SoilGrids `nitrogen` layer; K from CEC/clay;
    P has no reliable proxy (omitted). Confidence `low`.
 4. **Constant fallback** — the legacy placeholder, flagged `fabricated`.
 
-### Building the SHC table (one-time)
+Both SHC tables are built from real GoI data (2023-24 Soil Nutrient Analysis): each cell is
+the sample-count-weighted % of Low/Medium/High samples, converted to a supply fraction
+(Low=0.4, Medium=0.7, High=1.0). Names are accent/case/punctuation-normalised for robust
+matching between OSM and SHC.
 
-Runtime is fully offline once the CSV exists (same as the bundled DEM/salinity rasters). To
-generate it from data.gov.in:
+### Supplying a village for finer accuracy
 
-```bash
-DATA_GOV_IN_API_KEY=<your key> SHC_RESOURCE_ID=<district-macro-nutrient resource uuid> \
-    python scripts/dev_smoke/build_shc_district_npk.py
+Village data is only usable when the host knows the village (registration, field records).
+Pass it explicitly — the reliable village path:
+
+```python
+advisor.evaluate(lat, lon, crop="apple", village="Mashobra")   # → shc-village when matched
 ```
 
-If the CSV is absent (e.g. not yet built), the resolver simply skips the SHC tier and falls
-back to SoilGrids/pedotransfer — no crash, clearly lower confidence. We never ship fabricated
-district data.
+Without it, the resolver reverse-geocodes and uses the (reliable) district tier. An unmatched
+village silently cascades down to district, then state.
+
+### Building the SHC tables (one-time, offline thereafter)
+
+The tables are built from the data.gov.in **"Soil Nutrient Analysis"** bulk CSV export
+(long-format, village-level). Download it once, then:
+
+```bash
+python scripts/dev_smoke/build_shc_district_npk.py <path-to>/soil-nutrient-analysis.csv
+# writes data/static/shc_district_npk.csv + shc_village_npk.csv.gz
+```
+
+Runtime is then fully offline (no key, no network) — same pattern as the bundled DEM/salinity
+rasters. If the tables are absent, the resolver skips the SHC tiers and falls back to
+SoilGrids/pedotransfer — no crash, clearly lower confidence. We never ship fabricated data.
 
 ## Configuration (env)
 

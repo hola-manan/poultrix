@@ -30,7 +30,8 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
                    sensor_soil_moisture: float = None,
                    sensor_is_fraction: bool = False,
                    soil_test: Dict[str, Any] = None,
-                   growth_stage_override: str = None) -> Dict[str, Any]:
+                   growth_stage_override: str = None,
+                   village: str = None) -> Dict[str, Any]:
     """Fetch all required agricultural data for an AOI.
 
     Adds a top-level `_fabricated_sources` list naming each sub-source that
@@ -59,6 +60,11 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     location = GeographicDataFetcher.get_location_info(lat, lon)
     if location.pop("_fabricated", False):
         fabricated.append("location")
+    # A host that knows the farmer's village (e.g. from registration) can pass
+    # it explicitly — the reliable path to village-level SHC data, since
+    # reverse-geocoding a village from a lat/lon is unreliable.
+    if village:
+        location["village"] = village
 
     weather_start = start_date or sowing_date
     weather = WeatherDataFetcher.fetch_weather(lat, lon, weather_start, end_date)

@@ -1,6 +1,6 @@
 """Tests for the tiered N/P/K profile resolver."""
 
-from pathlib import Path
+import gzip
 
 import pytest
 
@@ -11,15 +11,26 @@ _FIXTURE_CSV = """state,district,n_low_pct,n_med_pct,n_high_pct,p_low_pct,p_med_
 himachal pradesh,shimla,10,30,60,20,50,30,5,25,70
 """
 
+_VILLAGE_FIXTURE = """state,district,village,n_low_pct,n_med_pct,n_high_pct,p_low_pct,p_med_pct,p_high_pct,k_low_pct,k_med_pct,k_high_pct
+Himachal Pradesh,Shimla,Mashobra,90,8,2,30,50,20,10,40,50
+"""
+
+
+def _clear():
+    sn._load_shc_table.cache_clear()
+    sn._load_shc_village_table.cache_clear()
+
 
 @pytest.fixture
 def shc_table(tmp_path, monkeypatch):
     csv_path = tmp_path / "shc_district_npk.csv"
     csv_path.write_text(_FIXTURE_CSV, encoding="utf-8")
     monkeypatch.setattr(sn, "_SHC_CSV_PATH", csv_path)
-    sn._load_shc_table.cache_clear()
+    # Neutralise the (real, bundled) village table so district tests are hermetic.
+    monkeypatch.setattr(sn, "_SHC_VILLAGE_PATH", tmp_path / "no_village.csv.gz")
+    _clear()
     yield
-    sn._load_shc_table.cache_clear()
+    _clear()
 
 
 def test_soil_test_tier_wins(shc_table):
@@ -38,6 +49,27 @@ def test_shc_district_tier(shc_table):
     for nutrient in ("N", "P", "K"):
         assert profile[nutrient]["source"] == "shc-district"
         assert profile[nutrient]["confidence"] == "medium"
+
+
+def test_village_tier_wins_then_falls_back_to_district(tmp_path, monkeypatch):
+    dcsv = tmp_path / "d.csv"
+    dcsv.write_text(_FIXTURE_CSV, encoding="utf-8")
+    vgz = tmp_path / "v.csv.gz"
+    with gzip.open(vgz, "wt", encoding="utf-8") as fh:
+        fh.write(_VILLAGE_FIXTURE)
+    monkeypatch.setattr(sn, "_SHC_CSV_PATH", dcsv)
+    monkeypatch.setattr(sn, "_SHC_VILLAGE_PATH", vgz)
+    _clear()
+
+    # Known village → village tier (note case/spacing normalised).
+    loc = {"state": "Himachal Pradesh", "district": "Shimla", "village": "mashobra"}
+    profile = sn.resolve_npk(loc, {})
+    assert profile["N"]["source"] == "shc-village"
+
+    # Unknown village → cascade down to district.
+    loc2 = {"state": "Himachal Pradesh", "district": "Shimla", "village": "Nowhere"}
+    assert sn.resolve_npk(loc2, {})["N"]["source"] == "shc-district"
+    _clear()
     # K skews High (5/25/70) → high supply fraction; N skews High too.
     assert profile["K"]["supply_fraction"] > profile["P"]["supply_fraction"]
 

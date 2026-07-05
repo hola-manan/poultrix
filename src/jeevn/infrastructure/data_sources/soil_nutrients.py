@@ -21,14 +21,22 @@ model. `requirements.py` then computes `current = supply_fraction × target`.
 
 Tiers (best → worst), resolved per nutrient independently:
   1. injected soil test (host DB) ............ confidence "high"
-  2. India Soil Health Card district ......... confidence "medium"  (bundled CSV)
+  2. India Soil Health Card, cascading village → district → state:
+       - village .............................. confidence "medium" (needs a
+         host-known village; not resolvable from lat/lon alone)
+       - district ............................. confidence "medium" (bundled CSV;
+         the reliable fallback from a lat/lon)
+       - state average ........................ confidence "low"
   3. SoilGrids / pedotransfer estimate ....... confidence "low" (P: "very_low")
   4. none available → signal fabricated ...... confidence "none" (caller keeps
      the legacy constant, unchanged behaviour)
 """
 
 import csv
+import gzip
 import os
+import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -40,12 +48,24 @@ _STATUS_FRACTION = {"low": 0.4, "medium": 0.7, "high": 1.0}
 
 _NUTRIENTS = ("N", "P", "K")
 
-# Bundled Soil Health Card district table (built by
-# scripts/dev_smoke/build_shc_district_npk.py from data.gov.in). Same
-# committed-artifact pattern as the DEM / salinity India rasters.
-_SHC_CSV_PATH = (
-    Path(__file__).resolve().parents[4] / "data" / "static" / "shc_district_npk.csv"
-)
+# Bundled Soil Health Card tables (built by
+# scripts/dev_smoke/build_shc_district_npk.py from the data.gov.in Soil Nutrient
+# Analysis export). Same committed-artifact pattern as the DEM / salinity India
+# rasters. The village table is gzipped (~4 MB) and loaded lazily only when a
+# village is known; the district table is the reliable lat/lon fallback.
+_STATIC_DIR = Path(__file__).resolve().parents[4] / "data" / "static"
+_SHC_CSV_PATH = _STATIC_DIR / "shc_district_npk.csv"
+_SHC_VILLAGE_PATH = _STATIC_DIR / "shc_village_npk.csv.gz"
+
+
+def _norm(s: Optional[str]) -> str:
+    """Normalise an admin-unit name for robust matching across sources
+    (OSM reverse-geocoding vs SHC): strip accents, lowercase, collapse
+    non-alphanumerics to single spaces."""
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
 
 def _fraction_from_status(status: Optional[str]) -> Optional[float]:
@@ -72,17 +92,16 @@ def _status_from_fraction(frac: float) -> str:
     return "high"
 
 
-# ── Tier 2: India Soil Health Card district lookup ──────────────────────────
+# ── Tier 2: India Soil Health Card lookup (village → district → state) ───────
+_PREFIX = {"N": "n", "P": "p", "K": "k"}
+
+
 @lru_cache(maxsize=1)
 def _load_shc_table() -> Dict[str, Dict[str, Any]]:
-    """Load the bundled SHC district table keyed by 'state|district' (lower).
+    """Load the bundled SHC district table keyed by norm 'state|district'.
 
-    Expected CSV columns:
-      state, district,
-      n_low_pct, n_med_pct, n_high_pct,
-      p_low_pct, p_med_pct, p_high_pct,
-      k_low_pct, k_med_pct, k_high_pct
-    Missing file → empty table (SHC tier is simply skipped).
+    Columns: state, district, {n,p,k}_{low,med,high}_pct.
+    Missing file → empty table (SHC tier simply skipped).
     """
     table: Dict[str, Dict[str, Any]] = {}
     if not _SHC_CSV_PATH.exists():
@@ -90,40 +109,46 @@ def _load_shc_table() -> Dict[str, Dict[str, Any]]:
     try:
         with open(_SHC_CSV_PATH, newline="", encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
-                state = (row.get("state") or "").strip().lower()
-                district = (row.get("district") or "").strip().lower()
+                state = _norm(row.get("state"))
                 if not state:
                     continue
-                key = f"{state}|{district}"
-                table[key] = row
+                table[f"{state}|{_norm(row.get('district'))}"] = row
     except Exception as e:  # a malformed bundle must not break advisories
         print(f"[WARN] SHC district table load failed: {e}")
     return table
 
 
-def _shc_supply(state: str, district: str) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Per-nutrient supply fraction + status from the SHC district table.
-
-    Falls back to a state-level average when the exact district is absent.
+@lru_cache(maxsize=1)
+def _load_shc_village_table() -> Dict[str, Dict[str, Any]]:
+    """Load the bundled gzipped SHC village table keyed by norm
+    'state|district|village'. Loaded lazily (only on the first village lookup)
+    because it holds ~270k rows. Missing file → empty (cascade skips this tier).
     """
-    table = _load_shc_table()
-    if not table:
-        return None
-    state_l = (state or "").strip().lower()
-    district_l = (district or "").strip().lower()
+    table: Dict[str, Dict[str, Any]] = {}
+    if not _SHC_VILLAGE_PATH.exists():
+        return table
+    try:
+        with gzip.open(_SHC_VILLAGE_PATH, "rt", newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                state = _norm(row.get("state"))
+                village = _norm(row.get("village"))
+                if not state or not village:
+                    continue
+                table[f"{state}|{_norm(row.get('district'))}|{village}"] = row
+    except Exception as e:
+        print(f"[WARN] SHC village table load failed: {e}")
+    return table
 
-    row = table.get(f"{state_l}|{district_l}")
-    rows = [row] if row else [
-        r for k, r in table.items() if k.startswith(f"{state_l}|")
-    ]
+
+def _supply_from_rows(rows, source: str, confidence: str) -> Optional[Dict[str, Dict[str, Any]]]:
+    """Build a per-nutrient supply profile from one or more SHC rows (averaged
+    across rows for the state-fallback case)."""
     rows = [r for r in rows if r]
     if not rows:
         return None
-
-    prefix = {"N": "n", "P": "p", "K": "k"}
     out: Dict[str, Dict[str, Any]] = {}
     for nutrient in _NUTRIENTS:
-        p = prefix[nutrient]
+        p = _PREFIX[nutrient]
         fracs = []
         for r in rows:
             try:
@@ -140,10 +165,46 @@ def _shc_supply(state: str, district: str) -> Optional[Dict[str, Dict[str, Any]]
             out[nutrient] = {
                 "supply_fraction": round(frac, 3),
                 "status": _status_from_fraction(frac),
-                "source": "shc-district" if row else "shc-state",
-                "confidence": "medium" if row else "low",
+                "source": source,
+                "confidence": confidence,
             }
     return out or None
+
+
+def _shc_supply(state: str, district: str,
+                village: str = "") -> Optional[Dict[str, Dict[str, Any]]]:
+    """Per-nutrient supply profile, cascading village → district → state.
+
+    Village is the finest real data but only usable when the caller knows it
+    (it can't be resolved reliably from a lat/lon); district is the dependable
+    fallback, then a state-level average.
+    """
+    state_n = _norm(state)
+    if not state_n:
+        return None
+    district_n = _norm(district)
+
+    # Tier 2a: exact village (finest).
+    village_n = _norm(village)
+    if village_n:
+        vrow = _load_shc_village_table().get(f"{state_n}|{district_n}|{village_n}")
+        supply = _supply_from_rows([vrow], "shc-village", "medium")
+        if supply:
+            return supply
+
+    table = _load_shc_table()
+    if not table:
+        return None
+
+    # Tier 2b: district.
+    supply = _supply_from_rows([table.get(f"{state_n}|{district_n}")],
+                               "shc-district", "medium")
+    if supply:
+        return supply
+
+    # Tier 2c: state-level average across its districts.
+    state_rows = [r for k, r in table.items() if k.startswith(f"{state_n}|")]
+    return _supply_from_rows(state_rows, "shc-state", "low")
 
 
 # ── Tier 3: SoilGrids / pedotransfer estimate ───────────────────────────────
@@ -237,7 +298,11 @@ def resolve_npk(location: Dict[str, Any],
     nutrient and marks it fabricated.
     """
     tier1 = _soil_test_supply(soil_test)
-    tier2 = _shc_supply(location.get("state", ""), location.get("district", "")) or {}
+    tier2 = _shc_supply(
+        location.get("state", ""),
+        location.get("district", ""),
+        location.get("village", ""),
+    ) or {}
     tier3 = _soilgrids_supply(soil_props or {})
 
     # SoilGrids/pedotransfer can be globally disabled (e.g. to force honesty in

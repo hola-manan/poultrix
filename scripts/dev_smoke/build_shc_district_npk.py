@@ -1,121 +1,159 @@
 """
-Build the bundled India Soil Health Card (SHC) district N/P/K table.
+Build the bundled India Soil Health Card (SHC) N/P/K lookup tables from the
+data.gov.in "Soil Nutrient Analysis" bulk export.
 
-Fetches district-wise macronutrient status (% of samples Low / Medium / High
-for N, P, K) from the Government of India open-data portal (data.gov.in) and
-writes `data/static/shc_district_npk.csv`, which
-`infrastructure/data_sources/soil_nutrients.py` reads at runtime. Same
-committed-artifact pattern as the bundled DEM / salinity India rasters —
-runtime stays fully offline (no API key, no network) once this CSV exists.
+The bulk export is a long-format, village-level CSV (one row per
+state/district/block/village x nutrient x level, with `value` = sample count):
+
+    id,year,state_name,state_code,district_name,district_code,block_name,
+    block_code,village_name,village_code,nutrient_type,nutrient_name,
+    nutrient_level,value
+
+We aggregate the macro nutrients (Nitrogen / Phosphorus / Potassium) at
+High/Medium/Low into two committed lookup tables that
+`infrastructure/data_sources/soil_nutrients.py` reads at runtime (fully offline
+thereafter):
+
+  * data/static/shc_village_npk.csv.gz  — per (state, district, village),
+    gzipped (~5 MB) to keep the repo lean.
+  * data/static/shc_district_npk.csv    — per (state, district) roll-up
+    (sample-count weighted), tiny.
+
+The resolver cascades village -> district -> state, so the fine village data is
+used when the farmer's village is known, and district is the reliable fallback
+from a lat/lon.
 
 Usage:
-    DATA_GOV_IN_API_KEY=xxxx SHC_RESOURCE_ID=<resource-uuid> \
-        python scripts/dev_smoke/build_shc_district_npk.py
+    python scripts/dev_smoke/build_shc_district_npk.py <path-to-bulk-csv>
+    # or set SHC_LOCAL_CSV=<path>
 
-Notes:
-  * data.gov.in requires a free API key (https://data.gov.in → "Sign In" →
-    "My Account" → API key). Pass it as DATA_GOV_IN_API_KEY.
-  * SHC publishes several macronutrient resources; set SHC_RESOURCE_ID to the
-    district-wise macro-nutrient dataset you want to bundle. Field names differ
-    between resources, so the column mapping below is best-effort and prints the
-    keys it saw to help you adjust.
-  * On any failure this script exits non-zero WITHOUT writing a partial/fake
-    file — the resolver then simply skips the SHC tier. We never fabricate
-    district data.
+Village names repeat across blocks within a district; we aggregate those
+together (block is not addressable from reverse geocoding anyway). On any
+failure the script exits non-zero without writing partial files — we never
+ship fabricated district data.
 """
 
 import csv
+import gzip
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
 
-import requests
+_STATIC = Path(__file__).resolve().parents[2] / "data" / "static"
+_DISTRICT_OUT = _STATIC / "shc_district_npk.csv"
+_VILLAGE_OUT = _STATIC / "shc_village_npk.csv.gz"
 
-_OUT = Path(__file__).resolve().parents[2] / "data" / "static" / "shc_district_npk.csv"
-_API = "https://api.data.gov.in/resource/{rid}"
+# Macro nutrient name -> column prefix; macro level -> slot suffix.
+_NUTRIENT_PREFIX = {"Nitrogen": "n", "Phosphorus": "p", "Potassium": "k"}
+_LEVELS = {"low": "low", "medium": "med", "high": "high"}
 
-# Best-effort field-name candidates for each logical column (lowercased match).
-_FIELD_CANDIDATES = {
-    "state": ["state", "state_name", "statename"],
-    "district": ["district", "district_name", "districtname"],
-    "n_low_pct": ["nitrogen_low", "n_low", "low_n", "n_low_pct"],
-    "n_med_pct": ["nitrogen_medium", "n_medium", "medium_n", "n_med_pct"],
-    "n_high_pct": ["nitrogen_high", "n_high", "high_n", "n_high_pct"],
-    "p_low_pct": ["phosphorous_low", "phosphorus_low", "p_low", "low_p"],
-    "p_med_pct": ["phosphorous_medium", "phosphorus_medium", "p_medium", "medium_p"],
-    "p_high_pct": ["phosphorous_high", "phosphorus_high", "p_high", "high_p"],
-    "k_low_pct": ["potassium_low", "k_low", "low_k"],
-    "k_med_pct": ["potassium_medium", "k_medium", "medium_k"],
-    "k_high_pct": ["potassium_high", "k_high", "high_k"],
-}
-_COLUMNS = list(_FIELD_CANDIDATES.keys())
+# Fixed 9-slot vector per key: [n_low,n_med,n_high, p_low,p_med,p_high, k_low,k_med,k_high]
+_SLOT = {f"{p}_{lvl}": i for i, (p, lvl) in enumerate(
+    (p, lvl) for p in ("n", "p", "k") for lvl in ("low", "med", "high"))}
 
+_COLUMNS_DISTRICT = ["state", "district",
+                     "n_low_pct", "n_med_pct", "n_high_pct",
+                     "p_low_pct", "p_med_pct", "p_high_pct",
+                     "k_low_pct", "k_med_pct", "k_high_pct"]
+_COLUMNS_VILLAGE = ["state", "district", "village"] + _COLUMNS_DISTRICT[2:]
 
-def _pick(record: dict, candidates: list):
-    lower = {k.lower(): v for k, v in record.items()}
-    for c in candidates:
-        if c in lower and lower[c] not in (None, ""):
-            return lower[c]
-    return ""
+# CSV column indices in the bulk export.
+_C_STATE, _C_DIST, _C_VILLAGE, _C_NAME, _C_LEVEL, _C_VALUE = 2, 4, 8, 11, 12, 13
 
 
-def fetch_records(resource_id: str, api_key: str) -> list:
-    records, offset, limit = [], 0, 1000
-    while True:
-        resp = requests.get(
-            _API.format(rid=resource_id),
-            params={"api-key": api_key, "format": "json",
-                    "offset": offset, "limit": limit},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        batch = resp.json().get("records", []) or []
-        if not batch:
-            break
-        records.extend(batch)
-        if len(batch) < limit:
-            break
-        offset += limit
-    return records
+def _new_vec():
+    return [0.0] * 9
+
+
+def _pcts(vec, base):
+    """(low%, med%, high%) for nutrient prefix `base` ('n'/'p'/'k')."""
+    lo = vec[_SLOT[f"{base}_low"]]
+    me = vec[_SLOT[f"{base}_med"]]
+    hi = vec[_SLOT[f"{base}_high"]]
+    tot = lo + me + hi
+    if tot <= 0:
+        return ("", "", "")
+    return (round(100 * lo / tot, 1), round(100 * me / tot, 1), round(100 * hi / tot, 1))
+
+
+def _row_for(vec, keys):
+    row = dict(zip(("state", "district", "village"), keys))
+    for base in ("n", "p", "k"):
+        lo, me, hi = _pcts(vec, base)
+        row[f"{base}_low_pct"] = lo
+        row[f"{base}_med_pct"] = me
+        row[f"{base}_high_pct"] = hi
+    return row
+
+
+def aggregate(csv_path: str):
+    village = defaultdict(_new_vec)   # (state, district, village) -> vec
+    n_rows = 0
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = csv.reader(fh)
+        next(reader)  # header
+        for r in reader:
+            n_rows += 1
+            prefix = _NUTRIENT_PREFIX.get(r[_C_NAME])
+            if prefix is None:
+                continue
+            level = _LEVELS.get(r[_C_LEVEL].strip().lower())
+            if level is None:
+                continue
+            try:
+                val = float(r[_C_VALUE])
+            except (ValueError, IndexError):
+                continue
+            if val <= 0:
+                continue
+            vec = village[(r[_C_STATE].strip(), r[_C_DIST].strip(), r[_C_VILLAGE].strip())]
+            vec[_SLOT[f"{prefix}_{level}"]] += val
+
+    # District roll-up = sample-count-weighted sum of its villages.
+    district = defaultdict(_new_vec)
+    for (state, dist, _village), vec in village.items():
+        d = district[(state, dist)]
+        for i, v in enumerate(vec):
+            d[i] += v
+
+    return village, district, n_rows
 
 
 def main() -> int:
-    api_key = os.environ.get("DATA_GOV_IN_API_KEY")
-    resource_id = os.environ.get("SHC_RESOURCE_ID")
-    if not api_key or not resource_id:
-        print("ERROR: set DATA_GOV_IN_API_KEY and SHC_RESOURCE_ID env vars.",
-              file=sys.stderr)
-        print("See the module docstring for how to obtain them.", file=sys.stderr)
+    csv_path = (sys.argv[1] if len(sys.argv) > 1 else None) or os.environ.get("SHC_LOCAL_CSV")
+    if not csv_path:
+        print("ERROR: pass the bulk CSV path as arg1 or set SHC_LOCAL_CSV.", file=sys.stderr)
+        return 2
+    if not Path(csv_path).exists():
+        print(f"ERROR: file not found: {csv_path}", file=sys.stderr)
         return 2
 
-    try:
-        records = fetch_records(resource_id, api_key)
-    except Exception as e:
-        print(f"ERROR: fetch failed: {e}", file=sys.stderr)
-        return 1
-    if not records:
-        print("ERROR: no records returned; check SHC_RESOURCE_ID.", file=sys.stderr)
+    print(f"Aggregating {csv_path} ...")
+    village, district, n_rows = aggregate(csv_path)
+    print(f"Scanned {n_rows:,} rows -> {len(village):,} villages, {len(district):,} districts.")
+    if not district:
+        print("ERROR: no N/P/K macro rows found - wrong file?", file=sys.stderr)
         return 1
 
-    print(f"Fetched {len(records)} records. Sample keys: "
-          f"{sorted(records[0].keys())}")
+    _STATIC.mkdir(parents=True, exist_ok=True)
 
-    rows = []
-    for rec in records:
-        row = {col: _pick(rec, cands) for col, cands in _FIELD_CANDIDATES.items()}
-        if row["state"] and (row["n_low_pct"] or row["p_low_pct"] or row["k_low_pct"]):
-            rows.append(row)
-    if not rows:
-        print("ERROR: could not map any rows — adjust _FIELD_CANDIDATES to the "
-              "printed keys above.", file=sys.stderr)
-        return 1
+    with open(_DISTRICT_OUT, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=_COLUMNS_DISTRICT)
+        w.writeheader()
+        for (state, dist), vec in sorted(district.items()):
+            row = _row_for(vec, (state, dist, ""))
+            row.pop("village")
+            w.writerow(row)
+    print(f"Wrote {len(district):,} district rows -> {_DISTRICT_OUT}")
 
-    _OUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(_OUT, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"Wrote {len(rows)} district rows → {_OUT}")
+    with gzip.open(_VILLAGE_OUT, "wt", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=_COLUMNS_VILLAGE)
+        w.writeheader()
+        for (state, dist, vil), vec in sorted(village.items()):
+            w.writerow(_row_for(vec, (state, dist, vil)))
+    size_mb = _VILLAGE_OUT.stat().st_size / 1e6
+    print(f"Wrote {len(village):,} village rows -> {_VILLAGE_OUT} ({size_mb:.1f} MB)")
     return 0
 
 

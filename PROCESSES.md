@@ -666,19 +666,22 @@ walk stages in order, accumulate days+gdd; the first stage whose cumulative ≥ 
 
 **What this MVP does:**
 ```
-current_levels = HARD_CODED {"N": 13.65, "P": 11.0, "K": 82.0, "S": 7.0, "Zn": 0.8}     # placeholder
-target = crop_data.nutrient_requirements[nut]["optimal"]   # from phenology table
+supply = resolve_npk(location, soil_props, soil_test)      # per-nutrient soil-supply fraction 0..1
+   tiers (per nutrient, best available):
+     soil test → SHC village → SHC district → SHC state → SoilGrids/pedotransfer → constant
+current = supply_fraction[nut] × target        # or legacy constant if no tier has the nutrient
+target  = crop_data.nutrient_requirements[nut]["optimal"]   # from phenology table
 adjusted_target = target × (0.8 + RVI × 0.4)
 gap = max(0, adjusted_target − current)
 status = critical | moderate | adequate based on current/target ratio
 ```
 
-**Gap / when it breaks:** **Current soil levels are hard-coded, not measured.** Every parcel gets the same `N=13.65`. The system effectively recommends fertiliser based on the crop target alone, with RVI as the only parcel-specific input. This is a placeholder until a soil-test ingest lands. Also note the **nutrient set is crop-dependent**: the apple phenology table defines all five (N/P/K/S/Zn), but the wheat table defines only N/P/K — so S and Zn gaps are simply never computed for wheat (and for any crop that falls back to wheat).
+**Gap / when it breaks:** **N/P/K current supply is now real regional data**, not a single constant — the India Soil Health Card (2023-24) cascaded village → district → state, or an injected soil test. Each nutrient carries a `source` + `confidence`; the real-time advisory only *alerts* on a dose at ≥ medium confidence (soil test / SHC), never on a placeholder- or weak-proxy-derived value (see §M). **S and Zn still use the legacy constant** (the SHC macro export covers only N/P/K), and the **nutrient set is crop-dependent**: the apple phenology table defines all five (N/P/K/S/Zn), the wheat table only N/P/K — so S/Zn gaps are never computed for wheat. Outside India with no soil test, N falls to a SoilGrids total-N proxy, K to a CEC proxy, P to the flagged constant — all low-confidence and non-alerting. The supply is expressed as a *fraction of the crop's recommended dose* (not an absolute soil-test kg/acre) to stay unit-consistent with the phenology targets.
 
 **Code path:**
-- Data source: hard-coded dict in [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) (line 27-33). Target from crop phenology in [src/jeevn/domain/crop/phenology.py](src/jeevn/domain/crop/phenology.py).
-- Transformation: same file, `calculate_nutrient_requirements`.
-- Outstream: `components.fertilizer_management.nutrient_requirements.{N,P,K,S,Zn}` — current / target / gap / status. Fertilizer table on PDF page 5 + Streamlit fertilizer section.
+- Data source: [src/jeevn/infrastructure/data_sources/soil_nutrients.py](src/jeevn/infrastructure/data_sources/soil_nutrients.py) `resolve_npk` (tables in [data/static/shc_{district,village}_npk.csv[.gz]](data/static/), built by [scripts/dev_smoke/build_shc_district_npk.py](scripts/dev_smoke/build_shc_district_npk.py)); attached to `aoi_data["soil_nutrients"]`. Target from crop phenology in [src/jeevn/domain/crop/phenology.py](src/jeevn/domain/crop/phenology.py).
+- Transformation: [src/jeevn/domain/fertilizer/requirements.py](src/jeevn/domain/fertilizer/requirements.py) `calculate_nutrient_requirements` (reads the resolver output; legacy constant only for nutrients no tier estimated).
+- Outstream: `components.fertilizer_management.nutrient_requirements.{N,P,K,S,Zn}` — current / target / gap / status / source / confidence. Fertilizer table on PDF page 5 + Streamlit fertilizer section.
 
 ---
 
@@ -1036,6 +1039,34 @@ Plus a special-case structured alert (`_aoi_in_built_up_land`) when SoilGrids re
 - Data sources: every adapter in [src/jeevn/infrastructure/data_sources/](src/jeevn/infrastructure/data_sources/) sets a fabrication flag on failure.
 - Transformation: hoisting in [src/jeevn/infrastructure/data_sources/aoi.py](src/jeevn/infrastructure/data_sources/aoi.py); merging + describing in [src/jeevn/application/advisory_service.py](src/jeevn/application/advisory_service.py); descriptions in [src/jeevn/infrastructure/pseudo_satellite.py](src/jeevn/infrastructure/pseudo_satellite.py) (`FABRICATED_FIELD_DESCRIPTIONS` + `describe`).
 - Outstream: `data_quality.{fabricated_fields[], details, alerts[], warning}` in the advisory report; rendered as a yellow banner + bulleted list (and red banner for alerts) in [src/jeevn/ui/app.py](src/jeevn/ui/app.py) (`tab_report` block, line 207-228). PDF disclaimer box on page 5.
+
+---
+
+## M. Real-time advisory & dry-spell alerts
+
+### M.1 Dry-spell detection
+
+**What it is:** Detecting a run of consecutive dry days so the farmer can pre-empt moisture stress.
+
+**Scientific ideal:** An agro-meteorological dry-spell index (e.g. consecutive days below a crop-/stage-specific ET-adjusted rainfall threshold), validated against soil-water-balance models and downscaled ensemble forecasts with probabilistic confidence.
+
+**What this MVP does:** `dry_days = trailing recent-dry run + leading forecast-dry run`, joined at today. A day is "dry" below `DRY_DAY_MM` (default 1 mm); a forecast day additionally requires `rain_probability < RAIN_PROB_PCT` (default 30%). Flags at `dry_days ≥ DRY_SPELL_DAYS` (default 5), escalating to *urgent* when a soil-water deficit co-occurs. Recent rain comes from the **forecast API's `past_days`** (low latency), not the ~5-day-lagged archive.
+
+**Gap / when it breaks:** Fixed thresholds, not crop-/stage-calibrated; single deterministic forecast, no ensemble spread. **Fail-safe:** a fabricated/failed forecast is a *data gap* → no dry-spell alert (never read as "no rain"). Coverage/accuracy of Open-Meteo precipitation is the ceiling.
+
+**Code path:** [src/jeevn/domain/dry_spell/detector.py](src/jeevn/domain/dry_spell/detector.py) (pure logic); driven by [src/jeevn/application/realtime_advisory.py](src/jeevn/application/realtime_advisory.py).
+
+### M.2 Ground-sensor fusion + alerts
+
+**What it is:** Fusing an in-field soil-moisture probe and turning the advisory into actionable alerts.
+
+**Scientific ideal:** Calibrated, depth-resolved sensor network assimilated into a soil-water-balance model; per-alert delivery with acknowledgement + agronomist escalation.
+
+**What this MVP does:** A `SoilSensor` reading (raw m³/m³ → fraction via real SoilGrids texture) becomes the **top-priority** soil-moisture source above NISAR/Open-Meteo; stale readings (`SENSOR_MAX_AGE_MIN`) are dropped. `build_alerts` emits, from genuine data only: `dry_spell`, `irrigate_now` (soil-water deficit), `hold_fertigation` (real 48 h forecast rain ≥ `LEACH_RAIN_MM` → leaching risk), `high_salinity` (real EC), and a **confidence-gated** `fertilize` (only ≥ medium-confidence NPK doses; see §G.1). **Delivery (SMS/WhatsApp) is Part 2** behind the `Notifier` seam — Part 1 renders + prints via `ConsoleNotifier`.
+
+**Gap / when it breaks:** No sensor calibration/QC beyond freshness; single-depth; in-memory alert dedupe only (no history/ack); deterministic thresholds. No physical sensor is required — a `MockSoilSensor` drives the path.
+
+**Code path:** sensors in [src/jeevn/infrastructure/sensors/](src/jeevn/infrastructure/sensors/); alerts/render/notifier + orchestration in [src/jeevn/application/](src/jeevn/application/) (`realtime_advisory.py`, `alerts.py`, `render.py`, `notifier.py`, `realtime_monitor.py`). Full usage doc: [docs/realtime_advisory.md](docs/realtime_advisory.md).
 
 ---
 

@@ -34,7 +34,8 @@ class AgriculturalReportGenerator:
                         location_name: str = "",
                         sensor_reading: Any = None,
                         growth_stage_override: str = None,
-                        soil_test: Dict[str, Any] = None) -> Dict[str, Any]:
+                        soil_test: Dict[str, Any] = None,
+                        village: str = None) -> Dict[str, Any]:
         """Generate complete agricultural advisory report.
 
         Real-time / accuracy overrides (all optional, default to today's
@@ -44,6 +45,8 @@ class AgriculturalReportGenerator:
           * `growth_stage_override` — authoritative growth stage from the host
             crop DB (else derived from sowing date + GDD).
           * `soil_test` — host-DB soil test for the NPK resolver's top tier.
+          * `village` — host-known village name; unlocks village-level SHC NPK
+            data (else the resolver falls back to district from the lat/lon).
         """
         sensor_sm = getattr(sensor_reading, "soil_moisture", None)
         sensor_is_fraction = bool(getattr(sensor_reading, "is_fraction", False))
@@ -55,6 +58,7 @@ class AgriculturalReportGenerator:
             sensor_is_fraction=sensor_is_fraction,
             soil_test=soil_test,
             growth_stage_override=growth_stage_override,
+            village=village,
         )
         aoi_fabricated = aoi_data.pop("_fabricated_sources", [])
         aoi_alerts = aoi_data.pop("_alerts", [])

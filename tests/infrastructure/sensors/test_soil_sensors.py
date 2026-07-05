@@ -29,7 +29,9 @@ def test_reading_freshness():
 
 
 def test_naive_timestamp_treated_as_utc():
-    r = SensorReading(soil_moisture=0.2, timestamp=datetime.utcnow())
+    # A tz-naive UTC timestamp (as a device might emit) must be treated as UTC.
+    naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    r = SensorReading(soil_moisture=0.2, timestamp=naive_utc)
     assert r.is_fresh(180)
 
 

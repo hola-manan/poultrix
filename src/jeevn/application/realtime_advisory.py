@@ -81,6 +81,7 @@ class RealtimeAdvisor:
                  growth_stage_override: Optional[str] = None,
                  soil_test: Optional[Dict[str, Any]] = None,
                  location_name: str = "",
+                 village: Optional[str] = None,
                  notifier: Optional[Notifier] = None) -> Dict[str, Any]:
         cfg = self.config
 
@@ -96,7 +97,7 @@ class RealtimeAdvisor:
             lat=lat, lon=lon, area_acres=area_acres, crop_name=crop,
             sowing_date=sowing_date, location_name=location_name,
             sensor_reading=reading, growth_stage_override=growth_stage_override,
-            soil_test=soil_test,
+            soil_test=soil_test, village=village,
         )
 
         # 3. Low-latency recent + forward rainfall (fail-safe if fabricated).
