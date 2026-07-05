@@ -125,16 +125,18 @@ class AgriculturalReportGenerator:
             aoi_data, ndvi_data,
         )
 
-        nutrient_requirements = NutrientRequirementCalculator.calculate_nutrient_requirements(
-            aoi_data, area_acres, rvi=ndvi_data["rvi"],
-        )
-        fertilizer_schedule = FertilizerScheduler.generate_fertilizer_schedule(
-            aoi_data, nutrient_requirements, area_acres,
-        )
-        report["components"]["fertilizer_management"] = {
-            "nutrient_requirements": nutrient_requirements,
-            "fertilizer_schedule": fertilizer_schedule,
-        }
+        crop_data = aoi_data.get("crop", {})
+        if "nutrient_requirements_kg_per_acre" in crop_data:
+            nutrient_requirements = NutrientRequirementCalculator.calculate_nutrient_requirements(
+                aoi_data, area_acres, rvi=ndvi_data["rvi"],
+            )
+            fertilizer_schedule = FertilizerScheduler.generate_fertilizer_schedule(
+                aoi_data, nutrient_requirements, area_acres,
+            )
+            report["components"]["fertilizer_management"] = {
+                "nutrient_requirements": nutrient_requirements,
+                "fertilizer_schedule": fertilizer_schedule,
+            }
 
         report["environmental_context"] = {
             "weather": aoi_data.get("weather", {}),

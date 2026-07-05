@@ -510,15 +510,15 @@ Where `Ra_mm = _calculate_ra(lat, day_of_year) × 0.408` — extraterrestrial ra
 
 **Scientific ideal:** **Stage-specific Kc curves measured by lysimeter on the cultivar of interest** in the local climate. FAO-56 publishes generic Kc curves; ICAR-CITH publishes apple-specific values for India. Best practice updates Kc daily from canopy cover or NDVI ("Kc from NDVI" via Bausch / Hunsaker linear relations).
 
-**What this MVP does:** Hard-coded per-stage lookup × RVI adjustment:
+**What this MVP does:** Universal FAO-56 lookup (with detailed hardcoded overrides) × RVI adjustment:
 ```
-base_kc = lookup(crop, growth_stage)          # FAO-56 table
+base_kc = lookup(crop, growth_stage)          # FAO-56 database (fao56_crop_db.json)
 adjusted_kc = base_kc × (0.8 + RVI × 0.4)
 ```
 With RVI itself being NDVI × 1.08 (see A.4), this *is* the "Kc-from-NDVI" idea — but the constants `0.8 + RVI×0.4` aren't derived from a regression on this crop in this region.
 
 **Code path:**
-- Data source: lookup table + RVI from advisory service.
+- Data source: `data/static/fao56_crop_db.json` via `CropPhenologyDatabase` + RVI from advisory service.
 - Transformation: [src/jeevn/domain/irrigation/et0.py](src/jeevn/domain/irrigation/et0.py) (`calculate_kc`).
 - Outstream: surfaces as the `kc` field in the irrigation schedule + PDF narrative.
 

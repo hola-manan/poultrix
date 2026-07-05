@@ -61,8 +61,8 @@ Fabrication tracking already exists (`src/jeevn/application/advisory_service.py`
 - Scheduled weekly regeneration per AOI (APScheduler or cron hitting the API).
 - **Trend section**: `aggregate_ndvi` already writes an NDVI/NDWI/NDRE time-series CSV (`src/jeevn/remote_sensing/ndvi/aggregate.py`) — surface "this week vs last 4 weeks" as a chart + one-line change narrative in UI and PDF. This is the single most valuable new farmer-visible feature and it's mostly plumbing.
 
-### 3. Crop database: add grape (+ pomegranate)
-- Phenology stages, NDVI ranges, yield potential, Kc stages: `src/jeevn/domain/crop/phenology.py` (follow apple/wheat pattern).
+### 3. Crop database: universal approach
+- Incorporate the FAO-56 crop coefficient database (`fao56_crop_db.json`) into `phenology.py` to support *any* crop globally with generic stages (initial, mid, end). Provide detailed manual profiles (yield, NDVI ranges, fertilizers) only for pilot crops like grape.
 - Pest/disease/weed entries with risk formulas — for grape, **downy mildew risk after rain events is the killer feature** (temp + humidity + rainfall driven, all data already flowing from Open-Meteo): `src/jeevn/domain/pest_disease_weed/assessment.py`.
 - Fertilizer targets + product list: `src/jeevn/domain/fertilizer/requirements.py`, `schedule.py`.
 - Get one agronomist/crop consultant to review these tables before pilot — wrong spray advice on grapes is a trust-ending event.

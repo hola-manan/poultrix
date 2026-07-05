@@ -1,10 +1,15 @@
 """
 Crop phenology — pure static lookup data.
 Defines growth stages, nutrient requirements, and yield potentials per crop.
+Now augmented with a Universal FAO-56 fallback database.
 """
 
+import json
+from pathlib import Path
 from typing import Dict, Any
+import logging
 
+logger = logging.getLogger(__name__)
 
 class CropPhenologyDatabase:
     """Database of crop-specific phenology, coefficients, and requirements"""
@@ -32,6 +37,7 @@ class CropPhenologyDatabase:
             "harvest_window_days": 14,
             "maturity_days": 120,
             "low_chill_variety": True,
+            "root_depth_m": 1.0,
         },
         "wheat": {
             "t_base": 4.0,
@@ -51,13 +57,88 @@ class CropPhenologyDatabase:
             },
             "yield_potential_kg_per_acre": 3650,
             "maturity_days": 120,
+            "root_depth_m": 0.6,
         }
     }
 
+    _fao_db_loaded = False
+    _fao_crops = {}
+    _fao_synonyms = {}
+
+    @classmethod
+    def _load_fao_db(cls):
+        if cls._fao_db_loaded:
+            return
+        
+        try:
+            # Resolve relative to this file's location or assume root execution
+            db_path = Path(__file__).parent.parent.parent.parent.parent / "data" / "static" / "fao56_crop_db.json"
+            if not db_path.exists():
+                db_path = Path("data/static/fao56_crop_db.json")
+                
+            with open(db_path, 'r') as f:
+                data = json.load(f)
+                cls._fao_crops = data.get("crops", {})
+                cls._fao_synonyms = data.get("synonyms", {})
+        except Exception as e:
+            logger.warning(f"Could not load fao56_crop_db.json: {e}")
+            cls._fao_crops = {}
+            cls._fao_synonyms = {}
+            
+        cls._fao_db_loaded = True
+
     @staticmethod
     def get_crop_data(crop_name: str) -> Dict[str, Any]:
-        crop_lower = crop_name.lower()
-        return CropPhenologyDatabase.CROP_DATA.get(crop_lower, CropPhenologyDatabase.CROP_DATA["wheat"])
+        crop_lower = crop_name.lower().strip()
+        
+        # 1. Check detailed hardcoded crops
+        if crop_lower in CropPhenologyDatabase.CROP_DATA:
+            return CropPhenologyDatabase.CROP_DATA[crop_lower]
+            
+        # 2. Check universal FAO-56 database
+        CropPhenologyDatabase._load_fao_db()
+        
+        # Resolve synonyms if needed
+        fao_crop_name = crop_lower
+        if crop_lower not in CropPhenologyDatabase._fao_crops:
+            # Check synonyms
+            for primary, syns in CropPhenologyDatabase._fao_synonyms.items():
+                if crop_lower in [s.lower() for s in syns]:
+                    fao_crop_name = primary.lower()
+                    break
+
+        # Case-insensitive match in FAO crops
+        fao_match = None
+        for k, v in CropPhenologyDatabase._fao_crops.items():
+            if k.lower() == fao_crop_name:
+                fao_match = v
+                break
+
+        if fao_match:
+            # Construct a generic 3-stage crop profile
+            return {
+                "t_base": 10.0, # Generic base temp
+                "growth_stages": {
+                    "initial": {"days": 30, "gdd": 300, "kc": fao_match["kc_ini"], "ndvi_range": (0.1, 0.3)},
+                    "mid": {"days": 60, "gdd": 900, "kc": fao_match["kc_mid"], "ndvi_range": (0.3, 0.8)},
+                    "late": {"days": 30, "gdd": 300, "kc": fao_match["kc_end"], "ndvi_range": (0.3, 0.5)},
+                },
+                "root_depth_m": fao_match["zr_max_m"],
+                "maturity_days": 120,
+                # Intentionally omitting nutrient_requirements_kg_per_acre
+            }
+            
+        # Fallback to generic blank crop if completely unknown
+        return {
+            "t_base": 10.0,
+            "growth_stages": {
+                "initial": {"days": 30, "gdd": 300, "kc": 0.4, "ndvi_range": (0.1, 0.3)},
+                "mid": {"days": 60, "gdd": 900, "kc": 1.0, "ndvi_range": (0.3, 0.8)},
+                "late": {"days": 30, "gdd": 300, "kc": 0.5, "ndvi_range": (0.3, 0.5)},
+            },
+            "root_depth_m": 1.0,
+            "maturity_days": 120,
+        }
 
     @staticmethod
     def get_current_growth_stage(crop_name: str, days_since_sowing: int, accumulated_gdd: float = 0) -> Dict[str, Any]:
