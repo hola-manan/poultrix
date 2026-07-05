@@ -143,13 +143,18 @@ Key design points:
 | **Microsoft Planetary Computer STAC** | Sentinel-2 L2A item search + COG hrefs   | [ingestion/sentinel.py](src/jeevn/ingestion/sentinel.py)                    | `runner.stub_ingest`               |
 | **Sentinel-2 COGs (B03/04/05/08/11)** | NDVI/NDWI/NDRE raster computation        | [remote_sensing/analysis/confidence.py](src/jeevn/remote_sensing/analysis/confidence.py) | Raster reported as `None`           |
 | **Open-Meteo Archive API**     | Daily temp / rain / radiation / wind + hourly soil moisture | [data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py) | `pseudo_satellite.make_default_weather` |
-| **ISRIC SoilGrids v2.0 REST**  | pH, SOC, sand/silt/clay, CEC, bulk density (0–30 cm) | [data_sources/soil.py](src/jeevn/infrastructure/data_sources/soil.py)       | `pseudo_satellite.make_default_soil` |
+| **Open-Meteo Forecast API**    | Forward forecast + low-latency recent rain (`past_days`) for scheduling + dry-spell | [data_sources/weather.py](src/jeevn/infrastructure/data_sources/weather.py) | `pseudo_satellite.make_default_forecast` (→ data gap, alerts suppressed) |
+| **ISRIC SoilGrids v2.0 REST**  | pH, SOC, sand/silt/clay, CEC, bulk density, total N (0–30 cm) | [data_sources/soil.py](src/jeevn/infrastructure/data_sources/soil.py)       | `pseudo_satellite.make_default_soil` |
+| **India Soil Health Card (data.gov.in)** | Soil N/P/K status by village/district (bundled CSVs) | [data_sources/soil_nutrients.py](src/jeevn/infrastructure/data_sources/soil_nutrients.py) | SoilGrids/pedotransfer → flagged constant |
+| **Ground soil-moisture sensor** | Real in-field moisture, fused as top-priority source | [infrastructure/sensors/](src/jeevn/infrastructure/sensors/) (Mock/REST/MQTT) | NISAR → Open-Meteo modelled moisture |
 | **ISRIC GSSmap 2016**          | Soil salinity / EC (India-clipped raster) | [data_sources/soil.py](src/jeevn/infrastructure/data_sources/soil.py) (bundled tif) | Fabricated EC                       |
 | **Open-Elevation API**         | Slope + aspect (Horn 1981 from 3×3 SRTM grid) | [data_sources/terrain.py](src/jeevn/infrastructure/data_sources/terrain.py) | Bundled ETOPO 2022 → fabricated flat plain |
 | **ETOPO 2022 30 arc-sec**      | Fallback DEM when Open-Elevation down    | [data_sources/terrain.py](src/jeevn/infrastructure/data_sources/terrain.py) (bundled tif) | Fabricated flat plain               |
 | **Nominatim (OpenStreetMap)**  | Reverse geocoding (locality / state)     | [data_sources/geocoding.py](src/jeevn/infrastructure/data_sources/geocoding.py) | `pseudo_satellite.make_default_location` |
 
-Bundled rasters live under `data/static/` and are produced by one-shot prep scripts in [scripts/dev_smoke/](scripts/dev_smoke/) (`build_dem_clip.py`, `build_salinity_clip.py`).
+Bundled rasters + the SHC N/P/K CSVs live under `data/static/` and are produced by one-shot prep scripts in [scripts/dev_smoke/](scripts/dev_smoke/) (`build_dem_clip.py`, `build_salinity_clip.py`, `build_shc_district_npk.py`).
+
+**Real-time advisory layer** ([application/realtime_advisory.py](src/jeevn/application/realtime_advisory.py)) sits on top of the report pipeline: it fuses a ground soil-moisture sensor, detects dry spells from low-latency + forecast rainfall, and emits confidence-gated irrigation/fertilisation **alerts** via a `Notifier` (Part 1: `ConsoleNotifier`; SMS/WhatsApp is Part 2). Run: `python -m jeevn.application.realtime_monitor --once`.
 
 ---
 

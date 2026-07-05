@@ -10,6 +10,7 @@ The orchestrator [../application/advisory_service.py](../application/advisory_se
 domain/
 ├── crop/                  # Crop phenology lookups
 ├── irrigation/            # FAO-56 ET0 + scheduling
+├── dry_spell/             # Dry-spell detection (recent + forecast rainfall)
 ├── soil/                  # Soil interpretation + recommendations
 ├── fertilizer/            # Nutrient gap + product schedule
 ├── pest_disease_weed/     # Risk scoring + IPM recommendations
@@ -61,6 +62,18 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 
 ---
 
+## `dry_spell/` — dry-spell detection
+
+### [`dry_spell/detector.py`](dry_spell/detector.py)
+`DrySpellDetector.detect(recent_rain, forecast_rain, forecast_prob, dry_day_mm=1.0, rain_prob_pct=30, min_dry_days=5, soil_moisture_deficit_mm=None, data_gap=False)` — pure logic, no I/O.
+
+- **`dry_days = trailing recent dry run + leading forecast dry run`**, joined at "today". A forecast day counts as dry only when `rainfall < dry_day_mm` **and** `rain_probability < rain_prob_pct` (a high-probability day isn't dry even if the modelled amount rounds to ~0).
+- Flags a spell at `dry_days ≥ min_dry_days`; escalates to `urgent` when a positive `soil_moisture_deficit_mm` is also present.
+- **Fail-safe:** `data_gap=True` (fabricated/failed weather) or empty series → `data_gap` result, **no** spell — a missing forecast is never read as "no rain".
+- **Returns** `DrySpellResult(is_dry_spell, dry_days, recent_dry_run, forecast_dry_run, severity, data_gap, reasons)`.
+
+---
+
 ## `soil/` — soil interpretation
 
 ### [`soil/management.py`](soil/management.py)
@@ -82,12 +95,11 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ### [`fertilizer/requirements.py`](fertilizer/requirements.py)
 `NutrientRequirementCalculator.calculate_nutrient_requirements(aoi_data, area_acres, rvi, yield_potential_kg_acre=None)`.
 
-- Hard-coded **current soil levels** dict (`N: 13.65, P: 11.0, K: 82.0, S: 7.0, Zn: 0.8`) — placeholder until a real soil-test source is integrated.
+- **Current N/P/K supply** now comes from `aoi_data["soil_nutrients"]` (the tiered resolver in [../../infrastructure/data_sources/soil_nutrients.py](../infrastructure/data_sources/soil_nutrients.py)): `current = supply_fraction × target_optimal`. S/Zn (and any nutrient no tier could estimate) fall back to the legacy constant (`N:13.65, P:11.0, K:82.0, S:7.0, Zn:0.8`), flagged `source="fabricated"`.
 - Pulls target levels from `aoi_data["crop"]["nutrient_requirements_kg_per_acre"][nutrient]["optimal"]`.
-- `adjusted_target = target_optimal × (0.8 + rvi × 0.4)`.
-- `gap = max(0, adjusted_target - current)`.
+- `adjusted_target = target_optimal × (0.8 + rvi × 0.4)`; `gap = max(0, adjusted_target - current)`.
 - Status: `critical` if `current < target × 0.5`, `moderate` if `< target × 0.8`, else `adequate`.
-- **Returns** `{N/P/K/S/Zn: {current_kg_per_acre, target_kg_per_acre, gap_kg_per_acre, status}}`.
+- **Returns** `{N/P/K/S/Zn: {current_kg_per_acre, target_kg_per_acre, gap_kg_per_acre, status, source, confidence}}`. `source`/`confidence` let the real-time advisory confidence-gate fertiliser alerts (only ≥ medium confidence alerts; placeholder/weak-proxy doses stay guidance-only).
 
 ### [`fertilizer/schedule.py`](fertilizer/schedule.py)
 `FertilizerScheduler.generate_fertilizer_schedule(aoi_data, nutrient_requirements, area_acres, application_frequency_days=2)`.
@@ -158,3 +170,5 @@ Each subpackage's `__init__.py` re-exports the public class for convenient `from
 ## Tests
 
 - [tests/remote_sensing/analysis/test_signals.py](../../../tests/remote_sensing/analysis/test_signals.py) and siblings exercise the remote-sensing math. The domain calculators are currently covered indirectly via the `scripts/test_agricultural_report.py` integration probe; targeted unit tests are a backlog item.
+- [tests/domain/dry_spell/test_dry_spell_detector.py](../../../tests/domain/dry_spell/test_dry_spell_detector.py) — dry-spell logic incl. the fail-safe data-gap path.
+- [tests/domain/irrigation/](../../../tests/domain/irrigation/) — ET0 + scheduler regression tests.

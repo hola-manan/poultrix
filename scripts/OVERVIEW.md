@@ -36,6 +36,13 @@ Full advisory pipeline probe **without** going through the API. Calls `applicati
 - Mosaics with `rasterio.merge.merge(bounds=INDIA_BBOX)` so only the India window is loaded.
 - DEFLATE-compressed output (`predictor=2` for integer DEMs / class rasters).
 
+### [`dev_smoke/build_shc_district_npk.py`](dev_smoke/build_shc_district_npk.py)
+**One-shot data prep.** Builds [data/static/shc_district_npk.csv](../data/static/shc_district_npk.csv) + [shc_village_npk.csv.gz](../data/static/shc_village_npk.csv.gz) — the India Soil Health Card N/P/K lookup tables used by [soil_nutrients.py](../src/jeevn/infrastructure/data_sources/soil_nutrients.py).
+
+- Input: the data.gov.in **"Soil Nutrient Analysis"** bulk CSV export (long-format, village-level, ~10.8M rows). Pass its path as arg1 or set `SHC_LOCAL_CSV`.
+- Streams once (no full load), aggregates macro N/P/K High/Medium/Low sample counts per village, rolls up to district (sample-count-weighted), writes both tables (village gzipped). Pure stdlib — no rasterio/GDAL.
+- Exits non-zero without writing on failure (never ships fabricated district data).
+
 ### [`dev_smoke/find_farmland.py`](dev_smoke/find_farmland.py)
 Probe SoilGrids at 24 candidate points around `(29.92, 73.88)` (Sri Ganganagar town centre, which sits in built-up land that SoilGrids flags as no-data). Sweeps 8 cardinal+diagonal directions × 3 distances (10/15/20 km), prints which points return real pH/SOC/sand/silt/clay. Used to pin down the default test coordinates the UI ships with.
 

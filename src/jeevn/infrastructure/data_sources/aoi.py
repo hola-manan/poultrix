@@ -16,6 +16,7 @@ from .soil import SoilDataFetcher, field_capacity_from_texture
 from .geocoding import GeographicDataFetcher
 from .terrain import TerrainDataFetcher
 from .nisar import NisarSoilMoistureClient
+from .soil_nutrients import resolve_npk
 
 # Phenology is pure domain data (no I/O) — infrastructure may depend on domain.
 from jeevn.domain.crop.phenology import CropPhenologyDatabase
@@ -25,12 +26,26 @@ from jeevn.infrastructure import pseudo_satellite
 def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
                    start_date: str = None, end_date: str = None,
                    crop_name: str = "apple",
-                   sowing_date: str = None) -> Dict[str, Any]:
+                   sowing_date: str = None,
+                   sensor_soil_moisture: float = None,
+                   sensor_is_fraction: bool = False,
+                   soil_test: Dict[str, Any] = None,
+                   growth_stage_override: str = None,
+                   village: str = None) -> Dict[str, Any]:
     """Fetch all required agricultural data for an AOI.
 
     Adds a top-level `_fabricated_sources` list naming each sub-source that
     fell back to pseudo defaults (`weather`, `soil`, `location`,
     `days_since_sowing`).
+
+    Real-time overrides (optional):
+      * `sensor_soil_moisture` — a fresh in-field reading. Raw volumetric
+        (m³/m³) by default, or already fraction-of-field-capacity when
+        `sensor_is_fraction=True`. Raw values are normalised here using the
+        AOI's real SoilGrids texture, then used as the highest-priority
+        soil-moisture source (above NISAR/Open-Meteo).
+      * `soil_test` — host-DB soil test ({nutrient: 'low'|'medium'|'high' or a
+        0..1 supply fraction}); top tier of the NPK resolver.
     """
     fabricated: List[str] = []
     alerts: List[Dict[str, Any]] = []
@@ -45,6 +60,11 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     location = GeographicDataFetcher.get_location_info(lat, lon)
     if location.pop("_fabricated", False):
         fabricated.append("location")
+    # A host that knows the farmer's village (e.g. from registration) can pass
+    # it explicitly — the reliable path to village-level SHC data, since
+    # reverse-geocoding a village from a lat/lon is unreliable.
+    if village:
+        location["village"] = village
 
     weather_start = start_date or sowing_date
     weather = WeatherDataFetcher.fetch_weather(lat, lon, weather_start, end_date)
@@ -98,6 +118,26 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         # we first scanned `_fabricated_fields`).
         fabricated = [f for f in fabricated if f != "soil.soil_moisture_current"]
 
+    # Ground sensor override — highest-priority soil-moisture source. A fresh
+    # in-field reading beats modelled and satellite estimates, so it overwrites
+    # `soil_moisture_current` and clears the fabricated flag regardless of what
+    # the weather overlay produced. Raw m³/m³ is normalised to
+    # fraction-of-field-capacity using the AOI's real texture so it lands on the
+    # same 0..1 scale the deficit / pest-weed thresholds expect.
+    if sensor_soil_moisture is not None:
+        if sensor_is_fraction:
+            sensor_frac = float(sensor_soil_moisture)
+        else:
+            fc_m3m3 = field_capacity_from_texture(
+                soil["properties"].get("texture", "loam"))
+            sensor_frac = (float(sensor_soil_moisture) / fc_m3m3) if fc_m3m3 else 0.0
+        sensor_frac = max(0.0, min(1.0, sensor_frac))
+        soil["properties"]["soil_moisture_current"] = round(sensor_frac, 2)
+        soil["properties"]["soil_moisture_source"] = "ground-sensor"
+        if soil_fabricated_fields is not None:
+            soil_fabricated_fields["soil_moisture_current"] = False
+        fabricated = [f for f in fabricated if f != "soil.soil_moisture_current"]
+
     # Radar Soil Moisture (RSM) — tiered, retires the old fabricated 0.72
     # constant. Same fraction-of-field-capacity scale as soil_moisture_current
     # so the pest/weed thresholds keep working.
@@ -110,8 +150,15 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
     fc_for_rsm = field_capacity_from_texture(texture_for_rsm)
     rsm: Dict[str, Any] = {"value": pseudo_satellite.RSM, "source": "fabricated"}
 
+    # Tier 0: ground sensor (already a real fraction-of-field-capacity).
+    if sensor_soil_moisture is not None:
+        rsm = {
+            "value": soil["properties"]["soil_moisture_current"],
+            "source": "ground-sensor",
+        }
+
     nisar_sm = None
-    if os.environ.get("EARTHDATA_USER") and os.environ.get("EARTHDATA_PASS"):
+    if rsm["source"] == "fabricated" and os.environ.get("EARTHDATA_USER") and os.environ.get("EARTHDATA_PASS"):
         nisar_sm = NisarSoilMoistureClient.fetch_sm_at(lat, lon)
     if nisar_sm is not None and fc_for_rsm:
         frac = max(0.0, min(1.0, nisar_sm["soil_moisture_m3m3"] / fc_for_rsm))
@@ -122,7 +169,9 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
             "pass_date": nisar_sm["pass_date"],
             "algorithm": nisar_sm["algorithm"],
         }
-    else:
+    elif rsm["source"] == "fabricated":
+        # Only fall to Open-Meteo when nothing higher-priority (ground sensor /
+        # NISAR) already resolved the RSM.
         sm_current = soil["properties"].get("soil_moisture_current")
         sm_is_real = (soil_fabricated_fields or {}).get("soil_moisture_current") is False
         if sm_current is not None and sm_is_real:
@@ -170,6 +219,19 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
             if temp is not None:
                 accumulated_gdd += max(0.0, float(temp) - t_base)
 
+    # Tiered soil N/P/K supply profile (soil test → SHC district →
+    # SoilGrids/pedotransfer). Consumed by the fertilizer requirement calc to
+    # replace the legacy hardcoded "current levels" constant.
+    soil_nutrients = resolve_npk(location, soil.get("properties", {}), soil_test)
+
+    # Growth stage: derived from phenology (sowing date + GDD) by default, but a
+    # host project can inject the authoritative stage from its own crop DB.
+    growth_stage = CropPhenologyDatabase.get_current_growth_stage(
+        crop_name, days_since_sowing, accumulated_gdd=accumulated_gdd)
+    if growth_stage_override:
+        growth_stage = {**growth_stage, "stage": growth_stage_override,
+                        "source": "host-db-override"}
+
     return {
         "location": location,
         "weather": weather,
@@ -177,9 +239,9 @@ def fetch_aoi_data(lat: float, lon: float, location_name: str = "",
         "soil": soil,
         "terrain": terrain,
         "radar_soil_moisture": rsm,
+        "soil_nutrients": soil_nutrients,
         "crop": crop_data,
-        "current_growth_stage": CropPhenologyDatabase.get_current_growth_stage(
-            crop_name, days_since_sowing, accumulated_gdd=accumulated_gdd),
+        "current_growth_stage": growth_stage,
         "sowing_date": sowing_date or datetime.now().strftime("%Y-%m-%d"),
         "days_since_sowing": days_since_sowing,
         "accumulated_gdd": round(accumulated_gdd, 1),

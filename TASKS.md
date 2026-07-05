@@ -346,6 +346,41 @@ todo-tracking an agent uses.
 
 *(most recent ~10 — older entries can be trimmed)*
 
+### 20. Real-time advisory + dry-spell alerts (weather + ground sensors)
+- **Resolved:** 2026-07-05
+- Status: done
+- One-liner: New real-time advisory layer on top of the accurate report —
+  ground soil-moisture sensor fusion + dry-spell detection + confidence-gated
+  irrigation/fertilisation alerts. Delivery (SMS/WhatsApp) deferred to Part 2
+  behind a `Notifier` seam.
+- What landed:
+  - `infrastructure/sensors/` — `SoilSensor` ABC + `SensorReading` (Mock/REST/
+    MQTT); fused as the **top-priority** soil-moisture source in the AOI
+    composer (raw m³/m³ normalised via real SoilGrids texture).
+  - `domain/dry_spell/` — recent (`fetch_forecast(past_days=…)`) + forecast
+    dry-run detector; **fail-safe** (fabricated/failed forecast → data gap →
+    no false dry-spell alert). `weather.fetch_forecast` gained `past_days`.
+  - `application/{realtime_advisory,alerts,render,notifier,realtime_monitor}.py`
+    — orchestration + `dry_spell`/`irrigate_now`/`hold_fertigation`/
+    `high_salinity`/`fertilize` alerts; `python -m jeevn.application.realtime_monitor --once`.
+  - **Fertilizer honesty fix:** replaced the hardcoded N/P/K "current levels"
+    placeholder with a tiered resolver — soil test → **India Soil Health Card**
+    (village→district→state cascade, real 2023-24 data.gov.in data) →
+    SoilGrids/pedotransfer → constant. Added SoilGrids `nitrogen` layer,
+    district/village reverse-geocoding, and bundled
+    `data/static/shc_{district,village}_npk.csv[.gz]` built by
+    `scripts/dev_smoke/build_shc_district_npk.py`. Dose alerts are
+    confidence-gated (≥ medium only).
+  - Fixed a pre-existing crash: `sar.py` now imports `rasterio` inside the try
+    so a missing optional dep degrades to a fabricated RVI instead of crashing.
+  - 39 new tests; full suite 166 passed / 0 failed in the project `.venv`
+    (run tests with `.venv/Scripts/python.exe -m pytest`, NOT bare system
+    Python — the venv holds rasterio/asf_search/fastapi/sqlalchemy). Docs in
+    `docs/realtime_advisory.md`; ARCHITECTURE/PROCESSES/OVERVIEW docs synced.
+- Follow-ups (Part 2 / backlog): SMS/WhatsApp `TwilioNotifier`; alert history +
+  dedupe/ack; crop-/stage-calibrated dry-spell thresholds; S/Zn from SHC
+  micronutrient data; sensor calibration/QC.
+
 ### 4. NISAR L-band soil moisture integration (SME2)
 - **Resolved:** 2026-05-29
 - One-liner: New `infrastructure/data_sources/nisar.py` —
