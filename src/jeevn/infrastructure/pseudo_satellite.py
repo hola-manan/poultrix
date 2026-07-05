@@ -112,7 +112,14 @@ def make_default_weather(lat: float, lon: float) -> Dict[str, Any]:
             "longitude": lon,
             "timezone": DEFAULT_TIMEZONE,
         },
-        "daily": {"dates": dates, **DEFAULT_WEATHER_DAILY},
+        # `relative_humidity_mean: None` and an empty `hourly` block are
+        # deliberate: with no real feed we do NOT synthesise hourly RH/temp,
+        # so the disease models fall back to "data unavailable" rather than
+        # presenting fabricated numbers as real (trust-pass principle).
+        "daily": {"dates": dates, "relative_humidity_mean": None,
+                  **DEFAULT_WEATHER_DAILY},
+        "hourly": {"time": [], "temperature_2m": [],
+                   "relative_humidity_2m": [], "precipitation": []},
         "_fabricated": True,
     }
 
@@ -169,6 +176,10 @@ def make_default_forecast(lat: float, lon: float, days: int = 7) -> Dict[str, An
             "solar_radiation": _cycle(base["solar_radiation"], days),
             "wind_speed": _cycle(base["wind_speed"], days),
         },
+        # Empty hourly block (no synthesised hourly weather) — the disease
+        # models treat absent hourly data as "unavailable", not low-risk.
+        "hourly": {"time": [], "temperature_2m": [],
+                   "relative_humidity_2m": [], "precipitation": []},
         "_fabricated": True,
     }
 

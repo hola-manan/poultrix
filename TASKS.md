@@ -57,28 +57,8 @@ todo-tracking an agent uses.
 
 *(known future work, not yet prioritised — move to `## Up Next` when ready)*
 
-### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
-- **Status:** pending (backlog)
-- **Why:** The pest/disease + weed risk model uses humidity as a major
-  input, but humidity is currently **estimated** by a formula
-  (`40 + rainfall×2 + (30 − temp)×2`) in
-  `domain/pest_disease_weed/assessment.py` — there is no real RH feed.
-  Open-Meteo already exposes hourly + daily relative humidity at no extra
-  cost (same API we use for temperature). This is the cheapest, highest-
-  leverage fabrication to retire and a prerequisite for any real
-  disease-infection modelling (task #16).
-- **What we want to achieve:**
-  - [ ] Weather adapter fetches real RH (hourly `relative_humidity_2m`,
-        daily max/min/mean) alongside the existing variables.
-  - [ ] The pest/disease/weed model consumes the real value; the
-        formula proxy becomes the fallback only.
-  - [ ] `environmental_conditions.humidity_estimate` is relabelled to
-        reflect that it's now measured, and flagged fabricated only when
-        Open-Meteo RH is unavailable.
-  - [ ] Doc updates per sync rule (PROCESSES H.1, infra OVERVIEW).
-
 ### 16. Pest/disease forecasting — Layer 1 (weather-driven risk models)
-- **Status:** pending (backlog, epic; benefits from #15 + #9 LST)
+- **Status:** in-progress (grape powdery/downy landed; codling-moth/scab degree-day models still pending)
 - **Why:** Today's pest/disease section is a static-lookup *susceptibility
   heuristic*, not a forecast — it scores "conditions resemble what this
   pest likes" from a 5-row table. The goal is to move it toward genuine
@@ -380,6 +360,38 @@ todo-tracking an agent uses.
 - Follow-ups (Part 2 / backlog): SMS/WhatsApp `TwilioNotifier`; alert history +
   dedupe/ack; crop-/stage-calibrated dry-spell thresholds; S/Zn from SHC
   micronutrient data; sensor calibration/QC.
+
+### Grape crop database (MVP-plan Part 2 #3)
+- **Resolved:** 2026-06-13
+- One-liner: Grape is now a first-class crop, no longer a wheat shadow.
+  Added `CROP_DATA["grape"]` to `crop/phenology.py` (t_base 10 °C; 8 stages
+  budburst→harvest anchored to forward/fruit pruning, ~155 d; Kc per stage;
+  K-weighted N/P/K/S/Zn targets; yield potential 10000 kg/acre), grape rows
+  in `growth_yield/projection.py` (`_assess_growth_stage` timing +
+  `_determine_harvest_status`), a dedicated `_get_grape_recommendations`
+  fertilizer branch (SOP not MOP — chloride-sensitive; foliar Zn; S top-up
+  beyond SOP), and fixed the grape mealybug `stage_susceptibility` to real
+  grape stages. Verified end-to-end: a grape AOI projects against grape
+  stages/yield/harvest, not wheat. New tests: `test_phenology.py` (5),
+  `test_fertilizer.py` (3). Docs synced (PROCESSES F.1/F.4/G.1/G.2/I.1,
+  domain OVERVIEW). With this, the H.2/H.3 grape disease models fire against
+  real grape phenology rather than the wheat fallback.
+
+### 15. Real relative humidity from Open-Meteo (replace the RH proxy)
+- **Resolved:** 2026-06-13
+- One-liner: `weather.py` now fetches Open-Meteo hourly `temperature_2m`,
+  `relative_humidity_2m`, `precipitation` (alongside the existing soil
+  moisture) in both `fetch_weather` (archive) and `fetch_forecast`, and
+  surfaces `daily.relative_humidity_mean` (24-h mean) + a full `hourly`
+  block. `assess_pest_disease_risk` and `growth_yield/projection.py` consume
+  the real RH and fall back to the `40 + rainfall×2 + (30 − temp)×2` proxy
+  only on fabricated weather, flagging `environmental_conditions.humidity_estimated`;
+  UI/PDF label "Humidity" vs "Humidity (est.)" off that flag. Landed together
+  with the first slice of #16 (grape Gubler powdery + hedged downy models in
+  the new `domain/crop_health/disease_models.py`) and dropped the unjustified
+  RVI term from disease scoring. New tests: `test_disease_models.py` (10),
+  `test_assessment.py` (5), extended `test_weather.py`. Docs synced
+  (PROCESSES D.5/H.1–H.4, domain + infra OVERVIEW).
 
 ### 4. NISAR L-band soil moisture integration (SME2)
 - **Resolved:** 2026-05-29

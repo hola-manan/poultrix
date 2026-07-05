@@ -487,6 +487,9 @@ def generate_pdf(report: Dict[str, Any],
     env_cond       = pest_data.get('environmental_conditions', {})
     temp_mean      = env_cond.get('temperature', 30)
     humidity_est   = env_cond.get('humidity_estimate', 60)
+    humidity_is_est = env_cond.get('humidity_estimated', True)
+    humidity_label  = 'Humidity (est.)' if humidity_is_est else 'Humidity'
+    humidity_word   = 'estimated humidity' if humidity_is_est else 'measured humidity'
     rsm_val        = env_cond.get('rsm', 0.72)
     rsm_source     = env_cond.get('rsm_source') or 'fabricated'
     rsm_pass_date  = env_cond.get('rsm_pass_date')
@@ -505,7 +508,7 @@ def generate_pdf(report: Dict[str, Any],
     # Environmental conditions strip — surfaces RSM (was previously buried
     # in the weed narrative only) with its source.
     story.append(Paragraph(
-        f'Temperature: <b>{temp_mean:.0f}°C</b> | Humidity (est.): <b>{humidity_est:.0f}%</b> | '
+        f'Temperature: <b>{temp_mean:.0f}°C</b> | {humidity_label}: <b>{humidity_est:.0f}%</b> | '
         f'RSM: <b>{rsm_val:.2f}</b> ({rsm_source_label})',
         S['subsection']))
 
@@ -545,7 +548,7 @@ def generate_pdf(report: Dict[str, Any],
     story.append(Paragraph(
         f'High canopy density ({vigor} vegetation vigor) creates a humid microclimate conducive '
         f'to fungal diseases. Rising {location} temperatures ({temp_mean:.0f}°C mean) accelerate '
-        f'pest life cycles, while {humidity_est:.0f}% estimated humidity increases susceptibility '
+        f'pest life cycles, while {humidity_est:.0f}% {humidity_word} increases susceptibility '
         f'to leaf-spot diseases during the sensitive {gs_pest} period.',
         S['body']))
     rsm_ref = {

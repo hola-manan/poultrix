@@ -24,6 +24,7 @@ def _ok_open_meteo_response(sm_hourly=None):
     """sm_hourly defaults to 48 values: a 24-h ramp from 0.20 to 0.30."""
     if sm_hourly is None:
         sm_hourly = [0.20] * 24 + [0.30] * 24
+    n = len(sm_hourly)
     return type("R", (), {
         "raise_for_status": lambda self: None,
         "json": lambda self: {
@@ -38,7 +39,11 @@ def _ok_open_meteo_response(sm_hourly=None):
                 "windspeed_10m_max": [8.0, 9.0],
             },
             "hourly": {
-                "time": [f"2026-05-14T{h:02d}:00" for h in range(len(sm_hourly))],
+                "time": [f"2026-05-14T{h:02d}:00" for h in range(n)],
+                "temperature_2m": [25.0] * n,
+                # Last 24 values are 80.0 -> last-24h mean RH = 80.
+                "relative_humidity_2m": [50.0] * max(0, n - 24) + [80.0] * min(n, 24),
+                "precipitation": [0.0] * n,
                 "soil_moisture_0_to_7cm": sm_hourly,
             },
         },
@@ -140,8 +145,9 @@ def test_soil_moisture_mean_is_none_when_all_null():
     assert result["daily"]["soil_moisture_0_to_7cm_mean"] is None
 
 
-def test_hourly_soil_moisture_param_is_requested():
-    """Lock in that we ask Open-Meteo for the hourly soil-moisture variable."""
+def test_hourly_params_are_requested():
+    """Lock in the hourly variables the disease models depend on: temperature,
+    relative humidity, precipitation, and soil moisture."""
     captured = {}
 
     def fake_get(url, params=None, timeout=None):
@@ -150,7 +156,33 @@ def test_hourly_soil_moisture_param_is_requested():
 
     with patch.object(weather_mod.requests, "get", side_effect=fake_get):
         WeatherDataFetcher.fetch_weather(29.92, 73.97)
-    assert captured["params"].get("hourly") == "soil_moisture_0_to_7cm"
+    hourly_param = captured["params"].get("hourly", "")
+    for var in ("temperature_2m", "relative_humidity_2m",
+                "precipitation", "soil_moisture_0_to_7cm"):
+        assert var in hourly_param, hourly_param
+
+
+def test_hourly_block_and_rh_mean_surfaced():
+    """The hourly series is surfaced for the disease models, and the last-24h
+    mean RH is computed from the real feed (no fabricated proxy)."""
+    with patch.object(weather_mod.requests, "get",
+                      return_value=_ok_open_meteo_response()):
+        result = WeatherDataFetcher.fetch_weather(29.92, 73.97)
+
+    assert result["daily"]["relative_humidity_mean"] == pytest.approx(80.0)
+    hourly = result["hourly"]
+    assert hourly["temperature_2m"] and hourly["relative_humidity_2m"]
+    assert len(hourly["time"]) == len(hourly["temperature_2m"])
+
+
+def test_fabricated_weather_has_empty_hourly_and_null_rh():
+    """On fallback we must NOT synthesise hourly weather — the disease models
+    rely on absence to avoid presenting fabricated numbers as real."""
+    with patch.object(weather_mod.requests, "get", side_effect=Exception("down")):
+        result = WeatherDataFetcher.fetch_weather(29.9, 73.9)
+    assert result["_fabricated"] is True
+    assert result["daily"]["relative_humidity_mean"] is None
+    assert result["hourly"]["temperature_2m"] == []
 
 
 def test_uses_current_open_meteo_variable_names():
