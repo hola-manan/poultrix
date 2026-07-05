@@ -373,8 +373,10 @@ todo-tracking an agent uses.
     confidence-gated (≥ medium only).
   - Fixed a pre-existing crash: `sar.py` now imports `rasterio` inside the try
     so a missing optional dep degrades to a fabricated RVI instead of crashing.
-  - 39 new tests; docs in `docs/realtime_advisory.md`; ARCHITECTURE/PROCESSES/
-    OVERVIEW docs synced.
+  - 39 new tests; full suite 166 passed / 0 failed in the project `.venv`
+    (run tests with `.venv/Scripts/python.exe -m pytest`, NOT bare system
+    Python — the venv holds rasterio/asf_search/fastapi/sqlalchemy). Docs in
+    `docs/realtime_advisory.md`; ARCHITECTURE/PROCESSES/OVERVIEW docs synced.
 - Follow-ups (Part 2 / backlog): SMS/WhatsApp `TwilioNotifier`; alert history +
   dedupe/ack; crop-/stage-calibrated dry-spell thresholds; S/Zn from SHC
   micronutrient data; sensor calibration/QC.
