@@ -28,6 +28,7 @@ from jeevn.domain.dry_spell import DrySpellDetector
 from jeevn.application.advisory_service import AgriculturalReportGenerator
 from jeevn.application.alerts import build_alerts
 from jeevn.application.notifier import Notifier
+from jeevn.application.render import render_advisory
 
 
 def _env_float(name: str, default: float) -> float:
@@ -170,3 +171,96 @@ class RealtimeAdvisor:
         current_vol = float(frac) * fc_m3m3
         return IrrigationCalculator.calculate_soil_water_deficit(
             current_vol, field_capacity=fc_m3m3, wilting_point=wp_m3m3)
+
+
+def _soil_moisture_view(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact soil-moisture view carrying the *source tier* that answered.
+
+    The AOI composer resolves soil moisture through a tiered source
+    (NISAR SME2 satellite -> Open-Meteo model -> fabricated). We surface the
+    label + pass date so a caller never misrepresents modelled moisture as a
+    satellite reading, and so the NISAR satellite tier is visible whenever it
+    lights up.
+    """
+    env = report.get("environmental_context", {})
+    soil = env.get("soil", {})
+    props = soil.get("properties", {}) if isinstance(soil, dict) else {}
+    rsm = env.get("radar_soil_moisture") or {}
+    return {
+        "current_fraction_of_fc": props.get("soil_moisture_current"),
+        "source": rsm.get("source") or props.get("soil_moisture_source"),
+        "value": rsm.get("value"),
+        "pass_date": rsm.get("pass_date"),
+    }
+
+
+def serialize_advisory(advisory: Dict[str, Any],
+                       include_report: bool = False) -> Dict[str, Any]:
+    """Turn a `RealtimeAdvisor.evaluate()` result into a JSON-safe dict.
+
+    Flattens the dataclass `alerts`/`dry_spell` into plain dicts, keeps a
+    ready-to-send `advisory_text`, a compact irrigation + soil-moisture view,
+    and the report `summary`. The full `report` is omitted unless
+    `include_report=True` (it is large and mostly UI/raster oriented).
+    """
+    report = advisory.get("report", {}) or {}
+    irrig = (report.get("components", {}).get("irrigation_schedule", {}) or {})
+    ds = advisory.get("dry_spell")
+
+    payload: Dict[str, Any] = {
+        "crop": advisory.get("crop", ""),
+        "location": advisory.get("location", ""),
+        "advisory_text": render_advisory(advisory),
+        "alerts": [
+            {
+                "severity": a.severity,
+                "kind": a.kind,
+                "title": a.title,
+                "message": a.message,
+                "data": a.data,
+            }
+            for a in advisory.get("alerts", [])
+        ],
+        "dry_spell": None if ds is None else {
+            "is_dry_spell": ds.is_dry_spell,
+            "dry_days": ds.dry_days,
+            "severity": ds.severity,
+            "data_gap": ds.data_gap,
+        },
+        "irrigation": {
+            "total_water_mm": irrig.get("total_water_mm"),
+            "irrigation_days": irrig.get("irrigation_days"),
+            "best_time": irrig.get("best_time"),
+            "etc_mm_per_day": irrig.get("etc_mm_per_day"),
+            "forecast_rainfall_mm": irrig.get("forecast_rainfall_mm"),
+        },
+        "soil_moisture": _soil_moisture_view(report),
+        "summary": report.get("summary"),
+        "sensor_used": advisory.get("sensor_used", False),
+        "weather_data_gap": advisory.get("weather_data_gap", False),
+    }
+    if include_report:
+        payload["report"] = report
+    return payload
+
+
+def run_realtime_advisory(lat: float, lon: float, crop: str = "wheat",
+                          sowing_date: Optional[str] = None,
+                          area_acres: float = 1.0, location_name: str = "",
+                          village: Optional[str] = None,
+                          soil_test: Optional[Dict[str, Any]] = None,
+                          growth_stage_override: Optional[str] = None,
+                          config: Optional[AdvisoryConfig] = None,
+                          include_report: bool = False) -> Dict[str, Any]:
+    """One-call, JSON-serialisable real-time advisory for a single point.
+
+    Shared entry point used by both the HTTP route (`POST /advisory/realtime`)
+    and in-process callers (e.g. the Kisan Alert Telegram bot). Fetches live
+    weather/soil internally; the caller supplies only lat/lon (+ optional crop).
+    """
+    advisory = RealtimeAdvisor(config).evaluate(
+        lat=lat, lon=lon, crop=crop, sowing_date=sowing_date,
+        area_acres=area_acres, location_name=location_name, village=village,
+        soil_test=soil_test, growth_stage_override=growth_stage_override,
+    )
+    return serialize_advisory(advisory, include_report=include_report)
