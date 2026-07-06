@@ -22,3 +22,22 @@ class AgriculturalAdvisoryResponse(BaseModel):
     status: str
     report: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class RealtimeAdvisoryRequest(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
+    crop_type: Optional[str] = "wheat"
+    area_acres: Optional[float] = 1.0
+    sowing_date: Optional[str] = None
+    location_name: Optional[str] = ""
+    village: Optional[str] = None
+    include_report: Optional[bool] = False
+
+
+class RealtimeAdvisoryResponse(BaseModel):
+    advisory_id: str
+    status: str
+    advisory: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

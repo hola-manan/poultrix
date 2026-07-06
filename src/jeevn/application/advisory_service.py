@@ -143,6 +143,10 @@ class AgriculturalReportGenerator:
             "soil": aoi_data.get("soil", {}),
             "terrain": aoi_data.get("terrain", {}),
             "growth_stage": aoi_data.get("current_growth_stage", {}),
+            # Tiered soil-moisture source (nisar-sme2 -> open-meteo ->
+            # ground-sensor -> fabricated) so consumers can show *which* source
+            # answered rather than misrepresenting modelled data as satellite.
+            "radar_soil_moisture": aoi_data.get("radar_soil_moisture", {}),
         }
 
         report["summary"] = AgriculturalReportGenerator._generate_summary(report)

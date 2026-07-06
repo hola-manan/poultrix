@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException
 from jeevn.api.schemas.advisory import (
     AgriculturalAdvisoryRequest,
     AgriculturalAdvisoryResponse,
+    RealtimeAdvisoryRequest,
+    RealtimeAdvisoryResponse,
 )
 
 try:
@@ -18,6 +20,13 @@ try:
 except ImportError as e:
     print(f"[INFO] Advisory service not available: {e}")
     ADVISORY_AVAILABLE = False
+
+try:
+    from jeevn.application.realtime_advisory import run_realtime_advisory
+    REALTIME_AVAILABLE = True
+except ImportError as e:
+    print(f"[INFO] Real-time advisory not available: {e}")
+    REALTIME_AVAILABLE = False
 
 
 router = APIRouter()
@@ -69,6 +78,61 @@ def generate_agricultural_advisory(request: AgriculturalAdvisoryRequest):
             "status": "failed",
             "report": None,
             "error": str(e)
+        }
+
+
+@router.post("/advisory/realtime", response_model=RealtimeAdvisoryResponse)
+def generate_realtime_advisory(request: RealtimeAdvisoryRequest):
+    """Live irrigation/fertilisation advisory + actionable alerts for a point.
+
+    Thin wrapper over `application.realtime_advisory.run_realtime_advisory`,
+    which fetches weather/soil live and returns a compact, JSON-safe advisory
+    (alerts, dry-spell, irrigation, soil-moisture source, farmer-ready text).
+    """
+    advisory_id = str(uuid.uuid4())
+
+    try:
+        if not REALTIME_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Real-time advisory module not available"
+            )
+
+        print(f"[INFO] Generating real-time advisory for {request.name}")
+        print(f"  Location: ({request.latitude}, {request.longitude})")
+        print(f"  Crop: {request.crop_type}, Area: {request.area_acres} acres")
+
+        advisory = run_realtime_advisory(
+            lat=request.latitude,
+            lon=request.longitude,
+            crop=request.crop_type,
+            area_acres=request.area_acres,
+            sowing_date=request.sowing_date,
+            location_name=request.location_name,
+            village=request.village,
+            include_report=request.include_report,
+        )
+
+        print(f"[INFO] Real-time advisory generated successfully: {advisory_id}")
+
+        return {
+            "advisory_id": advisory_id,
+            "status": "completed",
+            "advisory": advisory,
+            "error": None,
+        }
+
+    except HTTPException as e:
+        print(f"[ERROR] HTTP error in real-time advisory: {e.detail}")
+        raise
+
+    except Exception as e:
+        print(f"[ERROR] Error generating real-time advisory: {e}")
+        return {
+            "advisory_id": advisory_id,
+            "status": "failed",
+            "advisory": None,
+            "error": str(e),
         }
 
 
